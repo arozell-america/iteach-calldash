@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: iteach-calldash-server
+    env: node
+    region: oregon
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: ZOOM_WEBHOOK_SECRET_TOKEN
+        sync: false   # you'll paste this in the Render dashboard
+    healthCheckPath: /health
