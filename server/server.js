@@ -152,6 +152,10 @@ function verifyZoomWebhook(req) {
   return req.headers['x-zm-signature'] === expected;
 }
 
+app.get('/webhook/zoom', (req, res) => {
+  res.json({ status: 'ok', message: 'iTeach Call Floor webhook endpoint' });
+});
+
 app.post('/webhook/zoom', (req, res) => {
   // Zoom endpoint validation handshake
   if (req.body?.event === 'endpoint.url_validation') {
