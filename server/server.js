@@ -293,6 +293,15 @@ app.post('/api/reset-daily', (req, res) => {
 });
 
 // Health check
+
+// Temporary: clear all agents
+app.post('/api/nuke-agents', (req, res) => {
+  state.agents = {};
+  saveState();
+  broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+  res.json({ ok: true });
+});
+
 app.get('/health', (req, res) => res.json({ ok: true, agents: Object.keys(state.agents).length }));
 
 // ─── Start ────────────────────────────────────────────────────────────────────
