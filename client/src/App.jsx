@@ -280,7 +280,7 @@ export default function App() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&family=DM+Mono:wght@400;500;700&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: transparent; overflow: hidden; }
+        body { background: linear-gradient(160deg, #110045 0%, #0D1E6B 45%, #043C96 100%); background-attachment: fixed; min-height: 100vh; }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
       `}</style>
 
