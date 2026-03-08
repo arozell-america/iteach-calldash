@@ -16,9 +16,12 @@ const STATUS_CONFIG = {
 };
 
 const TEAM_COLORS = {
-  Admissions:    "#00C8FF",
-  Certification: "#FF6B35",
-  Support:       "#00E676",
+  "Lead Team":    "#038CF1",
+  "Educational":  "#00BEA8",
+  "Relational":   "#C1FD34",
+  "Engagement":   "#6B5CE7",
+  "Certification":"#FF9F0A",
+  "Curriculum":   "#FF4466",
 };
 
 function fmt(secs) {
