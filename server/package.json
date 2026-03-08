@@ -10,6 +10,8 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1004.0",
+    "@aws-sdk/util-dynamodb": "^3.996.2",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "ws": "^8.16.0"
