@@ -124,7 +124,7 @@ function AgentCard({ agent }) {
       <div style={{ position: "absolute", top: 8, right: 9, fontSize: 9, color: teamColor, fontWeight: 700, letterSpacing: 0.3 }}>{agent.team}</div>
       {/* Name stacked */}
       <div style={{ paddingLeft: 16, paddingTop: 1, paddingRight: 60 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{firstName}</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{firstName}</div>
         {lastName && <div style={{ fontSize: 11, fontWeight: 400, color: "rgba(255,255,255,0.55)", lineHeight: 1.2 }}>{lastName}</div>}
       </div>
       {/* Status + timer */}
@@ -342,6 +342,9 @@ export default function App() {
                   <span style={{ fontSize: 8, color: "rgba(255,255,255,0.35)" }}>{l}</span>
                 </div>
               ))}
+                {manualAgents.filter(a => (a.greatCallsToday || 0) > 0).length === 0 && (
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", textAlign: "center", padding: "8px 0" }}>No great calls yet today</div>
+                )}
             </div>
           </div>
 
@@ -372,7 +375,7 @@ export default function App() {
               ))}
             </div>
             {/* Great Call Scoreboard */}
-            {manualAgents.some(a => (a.greatCallsToday || 0) > 0) && (
+            {(
               <div style={{ background: "rgba(255,215,0,0.08)", border: "1px solid rgba(255,215,0,0.25)", borderRadius: 12, padding: "14px" }}>
                 <div style={{ fontSize: 9, letterSpacing: 2.5, color: "#FFD700", textTransform: "uppercase", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
                   <span>⭐</span><span>Great Calls</span>
