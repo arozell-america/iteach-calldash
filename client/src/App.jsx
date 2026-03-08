@@ -111,12 +111,13 @@ function AgentCard({ agent }) {
 
   return (
     <div style={{
-      padding: "9px 11px", borderRadius: 10,
+      padding: "14px 11px 12px", borderRadius: 10,
       background: isActive ? cfg.bg : "rgba(255,255,255,0.07)",
       border: `1px solid ${isActive ? cfg.color + "55" : "rgba(255,255,255,0.12)"}`,
       boxShadow: isActive ? `0 0 16px ${cfg.color}22` : "none",
-      display: "flex", flexDirection: "column", gap: 3,
+      display: "flex", flexDirection: "column", gap: 4,
       transition: "all 0.3s ease", position: "relative",
+      minHeight: 90,
     }}>
       {/* Status dot */}
       <div style={{ position: "absolute", top: 10, left: 10, width: 7, height: 7, borderRadius: "50%", background: cfg.dot, boxShadow: cfg.pulse ? `0 0 6px ${cfg.dot}` : "none" }} />
@@ -323,7 +324,7 @@ export default function App() {
                 <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>No agents registered</div>
               </div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
                 {manualAgents.map(agent => <AgentCard key={agent.id} agent={agent} />)}
               </div>
             )}
