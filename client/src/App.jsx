@@ -24,6 +24,13 @@ const TEAM_COLORS = {
   "Curriculum":       "#FF4466",
 };
 
+const TEAM_LEADS = {
+  "All": ["Admissions","Texas Support","National Support","Lead Team","Educational","Relational","Engagement","Certification","Curriculum"],
+  "Erica Redgraves": ["Admissions","National Support","Texas Support","Engagement"],
+  "Luis Tovar": ["Relational"],
+  "Abby Hinnrichs": ["Certification"],
+};
+
 const FLOOR_LAYOUT = {
   admissions: {
     label: "Admissions", color: "#038CF1",
@@ -234,11 +241,13 @@ export default function App() {
   const { data, connected } = useWebSocket(WS_URL);
   const now = useClock();
 
+  const [selectedLead, setSelectedLead] = useState("All");
   const agents = data?.agents || {};
   const stats = data?.stats || {};
 
+  const leadTeams = TEAM_LEADS[selectedLead] || TEAM_LEADS["All"];
   const manualAgents = Object.values(agents)
-    .filter(a => !a.autoRegistered)
+    .filter(a => !a.autoRegistered && leadTeams.includes(a.team))
     .sort((a, b) => {
       const order = { on_call: 0, ringing: 1, available: 2, away: 3, break: 3, dnd: 3, offline: 4 };
       return (order[a.status] ?? 5) - (order[b.status] ?? 5);
@@ -307,6 +316,25 @@ export default function App() {
           <StatCard label="Great Calls ⭐" value={stats.greatCallsToday || 0} color="#FFD700" sub="Flagged by agents" />
           <StatCard label="On Call Now" value={onCallCount} color="#FF3B5C" sub={`${ringingCount} ringing`} />
           <StatCard label="Available" value={availableCount} color="#C1FD34" sub={`of ${manualAgents.length} agents`} />
+        </div>
+
+        {/* Team Lead Filter */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ fontSize: 9, letterSpacing: 2, color: "rgba(255,255,255,0.35)", textTransform: "uppercase" }}>View</span>
+          {Object.keys(TEAM_LEADS).map(lead => {
+            const isActive = selectedLead === lead;
+            return (
+              <button key={lead} onClick={() => setSelectedLead(lead)} style={{
+                padding: "5px 14px", borderRadius: 20, border: "none", cursor: "pointer",
+                background: isActive ? "linear-gradient(135deg, #043C96, #038CF1)" : "rgba(255,255,255,0.08)",
+                color: isActive ? "#fff" : "rgba(255,255,255,0.5)",
+                fontSize: 11, fontWeight: isActive ? 700 : 400,
+                fontFamily: "'Poppins', sans-serif",
+                transition: "all 0.2s ease",
+                boxShadow: isActive ? "0 0 12px rgba(3,140,241,0.4)" : "none",
+              }}>{lead}</button>
+            );
+          })}
         </div>
 
         {/* Main layout */}
