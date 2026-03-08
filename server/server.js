@@ -9,6 +9,11 @@ const { WebSocketServer } = require('ws');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { DynamoDBClient, PutItemCommand, DeleteItemCommand, ScanCommand } = require('@aws-sdk/client-dynamodb');
+const { marshall, unmarshall } = require('@aws-sdk/util-dynamodb');
+
+const dynamo = new DynamoDBClient({ region: 'us-east-1' });
+const AGENTS_TABLE = 'calldash-agents';
 
 const app = express();
 const server = http.createServer(app);
@@ -54,14 +59,32 @@ function loadState() {
   try {
     if (fs.existsSync(STATE_FILE)) {
       const saved = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-      if (saved.agents) Object.assign(state.agents, saved.agents);
       if (saved.stats) Object.assign(state.stats, saved.stats);
-      console.log('State loaded:', Object.keys(state.agents).length, 'agents');
     }
   } catch(e) { console.error('Load state error:', e.message); }
 }
 
+async function loadAgentsFromDynamo() {
+  try {
+    const result = await dynamo.send(new ScanCommand({ TableName: AGENTS_TABLE }));
+    const items = (result.Items || []).map(i => unmarshall(i));
+    for (const agent of items) {
+      state.agents[agent.id] = {
+        ...agent,
+        status: 'offline',
+        callsToday: 0,
+        enrollmentsToday: 0,
+        greatCallsToday: 0,
+      };
+    }
+    console.log('[DynamoDB] Loaded', items.length, 'agents');
+  } catch(e) {
+    console.error('[DynamoDB] Load agents error:', e.message);
+  }
+}
+
 loadState();
+loadAgentsFromDynamo();
 
 // ─── WebSocket ────────────────────────────────────────────────────────────────
 
@@ -274,20 +297,30 @@ function handleZoomEvent(event, payload) {
 
 app.get('/api/state', (req, res) => res.json(getPublicState()));
 
-app.post('/api/agents', (req, res) => {
-  const { id, name, team, extension } = req.body;
+app.post('/api/agents', async (req, res) => {
+  const { id, name, team, extension, email } = req.body;
   if (!id || !name) return res.status(400).json({ error: 'id and name required' });
-  state.agents[id] = { id, name, team, extension, status: 'available', callsToday: 0, enrollmentsToday: 0 };
+  const agent = { id, name, team: team || '', extension: extension || '', email: email || '', status: 'available', callsToday: 0, enrollmentsToday: 0, greatCallsToday: 0 };
+  state.agents[id] = agent;
+  try {
+    await dynamo.send(new PutItemCommand({ TableName: AGENTS_TABLE, Item: marshall({ id, name, team: team || '', extension: extension || '', email: email || '' }) }));
+    console.log('[DynamoDB] Saved agent:', name);
+  } catch(e) { console.error('[DynamoDB] Save agent error:', e.message); }
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
   saveState();
   res.json(state.agents[id]);
 });
 
-app.delete('/api/agents/:id', (req, res) => {
+app.delete('/api/agents/:id', async (req, res) => {
   const id = req.params.id;
   const key = findAgentKey(id);
   if (!key) return res.status(404).json({ error: 'Agent not found' });
+  const agentId = state.agents[key].id;
   delete state.agents[key];
+  try {
+    await dynamo.send(new DeleteItemCommand({ TableName: AGENTS_TABLE, Key: marshall({ id: agentId }) }));
+    console.log('[DynamoDB] Deleted agent:', agentId);
+  } catch(e) { console.error('[DynamoDB] Delete agent error:', e.message); }
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
   saveState();
   res.json({ ok: true });
