@@ -9,22 +9,12 @@
  */
 
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
-const STATE_FILE = path.join(__dirname, 'state.json');
 const http = require('http');
 const { WebSocketServer } = require('ws');
 const crypto = require('crypto');
 const cors = require('cors');
 
 const app = express();
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
-  next();
-});
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
@@ -87,43 +77,40 @@ function seedMockData() {
   state.stats.avgSpeedToCall = 192; // seconds
 }
 
-// seedMockData(); // disabled - agents auto-register from Zoom webhooks
+seedMockData();
 
 // ─── Simulate live updates (remove once Zoom webhooks are connected) ──────────
-// DISABLED - Zoom webhooks handle real status
-// let simulationInterval = setInterval(() => {
-//   const ids = Object.keys(state.agents);
-//   // Randomly flip 1–2 agents' statuses
-//   const count = Math.floor(Math.random() * 2) + 1;
-//   for (let i = 0; i < count; i++) {
-//     const id = ids[Math.floor(Math.random() * ids.length)];
-//     const agent = state.agents[id];
-//     const transitions = {
-//       available: 'on_call',
-//       on_call:   'available',
-//       ringing:   'on_call',
-//       break:     'available',
-//     };
-//     if (!agent) return;
-//   const newStatus = transitions[agent.status] || 'available';
-//     state.agents[id] = {
-//       ...agent,
-//       status: newStatus,
-//       callStartTime: newStatus === 'on_call' ? Date.now() : null,
-//       callerId: newStatus === 'on_call' ? '+1-555-' + Math.floor(1000 + Math.random() * 9000) : null,
-//     };
-//     if (newStatus === 'on_call') state.stats.callsToday++;
-//   }
-// 
-//   // Fluctuate queue waiting
-//   Object.values(state.queues).forEach(q => {
-//     q.waiting = Math.max(0, q.waiting + Math.floor(Math.random() * 3) - 1);
-//     q.avgWait = Math.max(10, q.avgWait + Math.floor(Math.random() * 20) - 10);
-//   });
-// 
-//   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
-  saveState();
-// }, 3000);
+let simulationInterval = setInterval(() => {
+  const ids = Object.keys(state.agents);
+  // Randomly flip 1–2 agents' statuses
+  const count = Math.floor(Math.random() * 2) + 1;
+  for (let i = 0; i < count; i++) {
+    const id = ids[Math.floor(Math.random() * ids.length)];
+    const agent = state.agents[id];
+    const transitions = {
+      available: 'on_call',
+      on_call:   'available',
+      ringing:   'on_call',
+      break:     'available',
+    };
+    const newStatus = transitions[agent.status] || 'available';
+    state.agents[id] = {
+      ...agent,
+      status: newStatus,
+      callStartTime: newStatus === 'on_call' ? Date.now() : null,
+      callerId: newStatus === 'on_call' ? '+1-555-' + Math.floor(1000 + Math.random() * 9000) : null,
+    };
+    if (newStatus === 'on_call') state.stats.callsToday++;
+  }
+
+  // Fluctuate queue waiting
+  Object.values(state.queues).forEach(q => {
+    q.waiting = Math.max(0, q.waiting + Math.floor(Math.random() * 3) - 1);
+    q.avgWait = Math.max(10, q.avgWait + Math.floor(Math.random() * 20) - 10);
+  });
+
+  broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+}, 3000);
 
 // ─── WebSocket ────────────────────────────────────────────────────────────────
 
@@ -169,21 +156,8 @@ app.get('/webhook/zoom', (req, res) => {
   res.json({ status: 'ok', message: 'iTeach Call Floor webhook endpoint' });
 });
 
-
-// Case-insensitive agent lookup (Zoom sends IDs in lowercase)
-function findAgent(userId) {
-  if (!userId) return null;
-  const key = Object.keys(state.agents).find(k => k.toLowerCase() === userId.toLowerCase());
-  return key ? state.agents[key] : null;
-}
-function findAgentKey(userId) {
-  if (!userId) return null;
-  return Object.keys(state.agents).find(k => k.toLowerCase() === userId.toLowerCase()) || null;
-}
-
 app.post('/webhook/zoom', (req, res) => {
   // Zoom endpoint validation handshake
-  console.log('Zoom event name:', req.body?.event);
   if (req.body?.event === 'endpoint.url_validation') {
     const hash = crypto
       .createHmac('sha256', process.env.ZOOM_WEBHOOK_SECRET_TOKEN || '')
@@ -208,12 +182,11 @@ function handleZoomEvent(event, payload) {
 
     case 'phone_call.started': {
       const userId = payload?.operator?.id || payload?.callee?.user_id;
-      const __key = findAgentKey(userId);
-      if (userId && __key) {
-        state.agents[__key].status = 'on_call';
-        state.agents[__key].callStartTime = Date.now();
-        state.agents[__key].callerId = payload?.caller?.phone_number || 'Unknown';
-        state.agents[__key].currentCallId = payload?.call_id;
+      if (userId && state.agents[userId]) {
+        state.agents[userId].status = 'on_call';
+        state.agents[userId].callStartTime = Date.now();
+        state.agents[userId].callerId = payload?.caller?.phone_number || 'Unknown';
+        state.agents[userId].currentCallId = payload?.call_id;
         state.stats.callsToday++;
       }
       break;
@@ -221,33 +194,30 @@ function handleZoomEvent(event, payload) {
 
     case 'phone_call.ringing': {
       const userId = payload?.callee?.user_id;
-      const __key = findAgentKey(userId);
-      if (userId && __key) {
-        state.agents[__key].status = 'ringing';
-        state.agents[__key].callerId = payload?.caller?.phone_number || 'Unknown';
+      if (userId && state.agents[userId]) {
+        state.agents[userId].status = 'ringing';
+        state.agents[userId].callerId = payload?.caller?.phone_number || 'Unknown';
       }
       break;
     }
 
     case 'phone_call.answered': {
       const userId = payload?.callee?.user_id;
-      const __key = findAgentKey(userId);
-      if (userId && __key) {
-        state.agents[__key].status = 'on_call';
-        state.agents[__key].callStartTime = Date.now();
+      if (userId && state.agents[userId]) {
+        state.agents[userId].status = 'on_call';
+        state.agents[userId].callStartTime = Date.now();
       }
       break;
     }
 
     case 'phone_call.ended': {
       const userId = payload?.operator?.id || payload?.callee?.user_id;
-      const __key = findAgentKey(userId);
-      if (userId && __key) {
-        state.agents[__key].status = 'available';
-        state.agents[__key].callStartTime = null;
-        state.agents[__key].callerId = null;
-        state.agents[__key].currentCallId = null;
-        state.agents[__key].callsToday = (state.agents[__key].callsToday || 0) + 1;
+      if (userId && state.agents[userId]) {
+        state.agents[userId].status = 'available';
+        state.agents[userId].callStartTime = null;
+        state.agents[userId].callerId = null;
+        state.agents[userId].currentCallId = null;
+        state.agents[userId].callsToday = (state.agents[userId].callsToday || 0) + 1;
       }
       break;
     }
@@ -261,12 +231,11 @@ function handleZoomEvent(event, payload) {
         'In_A_Zoom_Meeting': 'meeting',
         'On_Phone_Call': 'on_call',
       };
-      const __key = findAgentKey(userId);
-      if (userId && __key) {
+      if (userId && state.agents[userId]) {
         const mapped = presenceMap[payload?.presence_status] || 'available';
         // Don't override on_call set by phone events
-        if (state.agents[__key].status !== 'on_call') {
-          state.agents[__key].status = mapped;
+        if (state.agents[userId].status !== 'on_call') {
+          state.agents[userId].status = mapped;
         }
       }
       break;
@@ -277,7 +246,6 @@ function handleZoomEvent(event, payload) {
   }
 
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
-  saveState();
 
   // Log event
   state.callLog.unshift({ event, payload, timestamp: Date.now() });
@@ -295,27 +263,7 @@ app.post('/api/agents', (req, res) => {
   if (!id || !name) return res.status(400).json({ error: 'id and name required' });
   state.agents[id] = { id, name, team, extension, status: 'available', callsToday: 0, enrollmentsToday: 0 };
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
-  saveState();
   res.json(state.agents[id]);
-});
-
-// Remove agent
-app.delete("/api/agents/:id", (req, res) => {
-  const id = req.params.id;
-  if (!state.agents[id]) return res.status(404).json({ error: "Agent not found" });
-  delete state.agents[id];
-  broadcast({ type: "STATE_UPDATE", payload: getPublicState() });
-  res.json({ ok: true });
-});
-
-// Remove agent
-app.delete('/api/agents/:id', (req, res) => {
-  const id = req.params.id;
-  if (!state.agents[id]) return res.status(404).json({ error: 'Agent not found' });
-  delete state.agents[id];
-  broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
-  saveState();
-  res.json({ ok: true });
 });
 
 // Update enrollment count (call from your Salesforce webhook)
@@ -325,7 +273,6 @@ app.post('/api/agents/:id/enrollment', (req, res) => {
   agent.enrollmentsToday = (agent.enrollmentsToday || 0) + 1;
   state.stats.applicationsToday++;
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
-  saveState();
   res.json({ ok: true });
 });
 
@@ -342,7 +289,6 @@ app.post('/api/reset-daily', (req, res) => {
   state.stats.callsToday = 0;
   state.stats.applicationsToday = 0;
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
-  saveState();
   res.json({ ok: true });
 });
 
@@ -352,17 +298,6 @@ app.get('/health', (req, res) => res.json({ ok: true, agents: Object.keys(state.
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3001;
-
-// Keep-alive: ping self every 10 minutes to prevent Render free tier sleep
-const SELF_URL = process.env.RENDER_EXTERNAL_URL || 'https://iteach-calldash.onrender.com';
-setInterval(() => {
-  require('https').get(SELF_URL + '/health', (res) => {
-    console.log('Keep-alive ping:', res.statusCode);
-  }).on('error', (e) => {
-    console.log('Keep-alive failed:', e.message);
-  });
-}, 10 * 60 * 1000);
-
 server.listen(PORT, () => {
   console.log(`\n🚀 Zoom Dashboard Server running on port ${PORT}`);
   console.log(`   WebSocket:  ws://localhost:${PORT}`);
