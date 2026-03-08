@@ -99,9 +99,11 @@ function autoRegister(userId, userObj) {
   if (!userId || findAgentKey(userId)) return;
   const email = userObj?.email || '';
   if (!email || !email.toLowerCase().includes('iteach.net')) {
-    console.log('Skipping non-iTeach user:', email);
+    console.log('Skipping non-iTeach user:', email || userId);
     return;
   }
+  const existingByEmail = Object.values(state.agents).find(a => a.email && a.email.toLowerCase() === email.toLowerCase());
+  if (existingByEmail) return;
   const name = userObj?.display_name || userObj?.name ||
     [userObj?.first_name, userObj?.last_name].filter(Boolean).join(' ') ||
     userObj?.email?.split('@')[0] || 'Unknown';
