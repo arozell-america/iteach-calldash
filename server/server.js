@@ -492,11 +492,27 @@ async function pollGreatCalls() {
     }
 
     // Update each agent's greatCallsToday
+    // Match SF name (e.g. "Andrew Rozell") against agent name which may be "Andrew Rozell" or "andrew.rozell"
     let totalGreatCalls = 0;
     for (const key of Object.keys(state.agents)) {
       const agent = state.agents[key];
-      const agentName = agent.name?.toLowerCase();
-      const count = agentName ? (greatCallMap[agentName] || 0) : 0;
+      const agentName = agent.name?.toLowerCase() || '';
+      // Try exact match first, then try matching by first+last name parts
+      let count = greatCallMap[agentName] || 0;
+      if (!count) {
+        for (const [sfName, sfCount] of Object.entries(greatCallMap)) {
+          const sfParts = sfName.split(' ');
+          const sfFirst = sfParts[0];
+          const sfLast = sfParts[sfParts.length - 1];
+          if (agentName.includes(sfFirst) && agentName.includes(sfLast)) {
+            count = sfCount;
+            break;
+          }
+          // Also match agent name against SF name parts (e.g. "andrew.rozell" vs "Andrew Rozell")
+          const agentClean = agentName.replace(/[._]/g, ' ');
+          if (agentClean === sfName) { count = sfCount; break; }
+        }
+      }
       state.agents[key].greatCallsToday = count;
       totalGreatCalls += count;
     }
