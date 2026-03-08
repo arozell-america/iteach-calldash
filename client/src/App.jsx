@@ -95,7 +95,6 @@ function findAgentByName(agents, name) {
   if (!name || !agents) return null;
   const needle = name.toLowerCase();
   return Object.values(agents).find(a =>
-    !a.autoRegistered &&
     (a.name?.toLowerCase().includes(needle) || needle.includes(a.name?.toLowerCase().split(" ")[0]))
   ) || null;
 }
@@ -230,7 +229,7 @@ function StatCard({ label, value, color, sub }) {
 
 // ─── Queue Bar ────────────────────────────────────────────────────────────────
 function QueueBar({ name, color, agents }) {
-  const teamAgents = Object.values(agents).filter(a => !a.autoRegistered && a.team === name);
+  const teamAgents = Object.values(agents).filter(a => a.team === name);
   const onCall = teamAgents.filter(a => a.status === "on_call").length;
   const total = teamAgents.length || 1;
   const pct = Math.round((onCall / total) * 100);
@@ -256,7 +255,7 @@ export default function App() {
   const stats = data?.stats || {};
 
   const manualAgents = Object.values(agents)
-    .filter(a => !a.autoRegistered)
+    
     .sort((a, b) => {
       // Sort: on_call first, then ringing, then available, then rest
       const order = { on_call: 0, ringing: 1, available: 2, away: 3, break: 3, dnd: 3, offline: 4 };
