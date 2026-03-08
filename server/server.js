@@ -100,7 +100,8 @@ let simulationInterval = setInterval(() => {
       ringing:   'on_call',
       break:     'available',
     };
-    const newStatus = transitions[agent.status] || 'available';
+    if (!agent) return;
+  const newStatus = transitions[agent.status] || 'available';
     state.agents[id] = {
       ...agent,
       status: newStatus,
