@@ -87,7 +87,8 @@ function seedMockData() {
 // seedMockData(); // disabled - agents auto-register from Zoom webhooks
 
 // ─── Simulate live updates (remove once Zoom webhooks are connected) ──────────
-let simulationInterval = setInterval(() => {
+// DISABLED - Zoom webhooks handle real status
+// let simulationInterval = setInterval(() => {
   const ids = Object.keys(state.agents);
   // Randomly flip 1–2 agents' statuses
   const count = Math.floor(Math.random() * 2) + 1;
