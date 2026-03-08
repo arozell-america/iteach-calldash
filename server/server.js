@@ -183,6 +183,7 @@ function findAgentKey(userId) {
 
 app.post('/webhook/zoom', (req, res) => {
   // Zoom endpoint validation handshake
+  console.log('Zoom event name:', req.body?.event);
   if (req.body?.event === 'endpoint.url_validation') {
     const hash = crypto
       .createHmac('sha256', process.env.ZOOM_WEBHOOK_SECRET_TOKEN || '')
