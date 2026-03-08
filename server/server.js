@@ -86,7 +86,10 @@ function getPublicState() {
 
 function findAgentKey(userId) {
   if (!userId) return null;
-  return Object.keys(state.agents).find(k => k.toLowerCase() === userId.toLowerCase()) || null;
+  const lower = userId.toLowerCase();
+  const match = Object.keys(state.agents).find(k => k.toLowerCase() === lower);
+  if (!match) console.log('[LOOKUP MISS] userId:', userId, 'lower:', lower, 'keys:', Object.keys(state.agents).map(k => k.toLowerCase()));
+  return match || null;
 }
 
 // ─── Zoom Webhook ─────────────────────────────────────────────────────────────
