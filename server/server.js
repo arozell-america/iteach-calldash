@@ -245,6 +245,8 @@ function handleZoomEvent(event, payload) {
       'Available': 'available', 'Away': 'away',
       'Do_Not_Disturb': 'dnd', 'In_A_Zoom_Meeting': 'meeting',
       'On_Phone_Call': 'on_call', 'Offline': 'offline',
+      'Mobile_signed_in': 'away', 'Busy': 'dnd',
+      'In_A_Calendar_Event': 'away', 'Presenting': 'dnd',
     };
     if (key) {
       const mapped = presenceMap[payload?.presence_status || payload?.object?.presence_status] || 'available';
@@ -351,13 +353,16 @@ async function pollPresence() {
   if (!token) return;
 
   const presenceMap = {
-    "Available":         "available",
-    "Away":              "away",
-    "Do_Not_Disturb":    "dnd",
-    "In_A_Zoom_Meeting": "meeting",
-    "On_Phone_Call":     "on_call",
-    "Offline":           "offline",
-    "Busy":              "dnd",
+    "Available":           "available",
+    "Away":                "away",
+    "Do_Not_Disturb":      "dnd",
+    "In_A_Zoom_Meeting":   "meeting",
+    "On_Phone_Call":       "on_call",
+    "Offline":             "offline",
+    "Busy":                "dnd",
+    "Mobile_signed_in":    "away",
+    "In_A_Calendar_Event": "away",
+    "Presenting":          "dnd",
   };
 
   const agentIds = Object.keys(state.agents);
