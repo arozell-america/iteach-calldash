@@ -118,30 +118,30 @@ function autoRegister(userId, userObj) {
 }
 
 function handleZoomEvent(event, payload) {
-  if (event === 'phone_call.callee_ringing' || event === 'phone_call.ringing') {
+  if (event === 'phone.callee_ringing' || event === 'phone.ringing') {
     const userId = payload?.callee?.user_id || payload?.object?.callee?.user_id;
     autoRegister(userId, payload?.callee || payload?.object?.callee);
     const key = findAgentKey(userId);
     if (key) { state.agents[key].status = 'ringing'; state.agents[key].callerId = payload?.caller?.phone_number || 'Unknown'; }
-  } else if (event === 'phone_call.callee_answered' || event === 'phone_call.answered') {
+  } else if (event === 'phone.callee_answered' || event === 'phone.answered') {
     const userId = payload?.callee?.user_id || payload?.object?.callee?.user_id;
     autoRegister(userId, payload?.callee);
     const key = findAgentKey(userId);
     if (key) { state.agents[key].status = 'on_call'; state.agents[key].callStartTime = Date.now(); state.stats.callsToday++; }
-  } else if (event === 'phone_call.callee_ended' || event === 'phone_call.ended') {
+  } else if (event === 'phone.callee_ended' || event === 'phone.ended') {
     const userId = payload?.callee?.user_id || payload?.object?.callee?.user_id;
     const key = findAgentKey(userId);
     if (key) { state.agents[key].status = 'available'; state.agents[key].callStartTime = null; state.agents[key].callerId = null; state.agents[key].callsToday++; }
-  } else if (event === 'phone_call.caller_ringing' || event === 'phone_call.started') {
+  } else if (event === 'phone.caller_ringing' || event === 'phone.caller_connected') {
     const userId = payload?.caller?.user_id || payload?.object?.caller?.user_id;
     autoRegister(userId, payload?.caller);
     const key = findAgentKey(userId);
     if (key) { state.agents[key].status = 'ringing'; state.agents[key].callerId = 'Outbound'; }
-  } else if (event === 'phone_call.caller_answered') {
+  } else if (event === 'phone.caller_answered') {
     const userId = payload?.caller?.user_id || payload?.object?.caller?.user_id;
     const key = findAgentKey(userId);
     if (key) { state.agents[key].status = 'on_call'; state.agents[key].callStartTime = Date.now(); state.stats.callsToday++; }
-  } else if (event === 'phone_call.caller_ended') {
+  } else if (event === 'phone.caller_ended') {
     const userId = payload?.caller?.user_id || payload?.object?.caller?.user_id;
     const key = findAgentKey(userId);
     if (key) { state.agents[key].status = 'available'; state.agents[key].callStartTime = null; state.agents[key].callerId = null; state.agents[key].callsToday++; }
