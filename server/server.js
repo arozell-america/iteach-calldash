@@ -303,6 +303,19 @@ function handleZoomEvent(event, payload) {
 
 app.get('/api/state', (req, res) => res.json(getPublicState()));
 
+app.get('/api/debug-sf', async (req, res) => {
+  try {
+    if (!sfAccessToken) await getSfAccessToken();
+    const query = `SELECT Id, Great_Call__c, LastModifiedBy.Name FROM Contact WHERE Great_Call__c = TODAY LIMIT 10`;
+    const url = `${process.env.SF_INSTANCE_URL}/services/data/v59.0/query?q=${encodeURIComponent(query)}`;
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${sfAccessToken}` } });
+    const data = await r.json();
+    res.json(data);
+  } catch(e) {
+    res.json({ error: e.message });
+  }
+});
+
 app.post('/api/agents', async (req, res) => {
   const { id, name, team, extension, email } = req.body;
   if (!id || !name) return res.status(400).json({ error: 'id and name required' });
