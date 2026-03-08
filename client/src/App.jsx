@@ -112,7 +112,7 @@ function AgentCard({ agent }) {
     <div style={{
       padding: "11px 13px", borderRadius: 10,
       background: cfg.bg,
-      border: `1px solid ${isActive ? cfg.color + "66" : "rgba(255,255,255,0.07)"}`,
+      border: `1px solid ${isActive ? cfg.color + "66" : "rgba(255,255,255,0.12)"}`,
       boxShadow: isActive ? `0 0 14px ${cfg.color}22` : "none",
       display: "flex", flexDirection: "column", gap: 5,
       transition: "all 0.3s ease",
@@ -162,20 +162,20 @@ function DeskCell({ seatName, agents, teamColor }) {
   const initials = seatName ? seatName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() : "";
 
   if (!seatName) return (
-    <div style={{ width: 56, height: 56, borderRadius: 7, background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.05)" }} />
+    <div style={{ width: 56, height: 56, borderRadius: 7, background: "rgba(255,255,255,0.04)", border: "1px dashed rgba(255,255,255,0.05)" }} />
   );
 
   return (
     <div style={{
       width: 56, height: 56, borderRadius: 7,
-      background: agent ? cfg.bg : "rgba(255,255,255,0.03)",
-      border: `2px solid ${agent ? cfg.color : "rgba(255,255,255,0.07)"}`,
+      background: agent ? cfg.bg : "rgba(255,255,255,0.05)",
+      border: `2px solid ${agent ? cfg.color : "rgba(255,255,255,0.12)"}`,
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
       gap: 1, position: "relative", transition: "all 0.3s ease",
       boxShadow: agent && cfg.pulse ? `0 0 10px ${cfg.color}44` : "none",
     }}>
       <div style={{ position: "absolute", top: 4, right: 4, width: 6, height: 6, borderRadius: "50%", background: agent ? cfg.dot : "#1E2A3A" }} />
-      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, borderRadius: "0 0 5px 5px", background: agent ? (TEAM_COLORS[agent.team] || teamColor) : "rgba(255,255,255,0.04)" }} />
+      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, borderRadius: "0 0 5px 5px", background: agent ? (TEAM_COLORS[agent.team] || teamColor) : "rgba(255,255,255,0.12)" }} />
       <div style={{ fontSize: 14, fontWeight: 700, color: agent ? cfg.color : "rgba(255,255,255,0.18)", fontFamily: "'DM Mono', monospace" }}>{initials}</div>
       {elapsed
         ? <div style={{ fontSize: 8, color: cfg.color, fontFamily: "'DM Mono', monospace" }}>{elapsed}</div>
@@ -193,7 +193,7 @@ function Pod({ pod, agents }) {
   const available = podAgents.filter(a => a.status === "available").length;
 
   return (
-    <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${pod.color}33`, borderRadius: 10, padding: "10px 12px" }}>
+    <div style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${pod.color}33`, borderRadius: 10, padding: "10px 12px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <div style={{ width: 7, height: 7, borderRadius: 2, background: pod.color }} />
@@ -220,7 +220,7 @@ function Pod({ pod, agents }) {
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 function StatCard({ label, value, color, sub }) {
   return (
-    <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "13px 16px" }}>
+    <div style={{ flex: 1, background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "13px 16px" }}>
       <div style={{ fontSize: 9, letterSpacing: 2, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", marginBottom: 5 }}>{label}</div>
       <div style={{ fontSize: 28, fontWeight: 700, color, fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>{value}</div>
       {sub && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", marginTop: 3 }}>{sub}</div>}
@@ -240,7 +240,7 @@ function QueueBar({ name, color, agents }) {
         <span style={{ fontSize: 10, color, fontWeight: 600 }}>{name}</span>
         <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontFamily: "'DM Mono', monospace" }}>{onCall}/{teamAgents.length}</span>
       </div>
-      <div style={{ height: 5, background: "rgba(255,255,255,0.07)", borderRadius: 3, overflow: "hidden" }}>
+      <div style={{ height: 5, background: "rgba(255,255,255,0.12)", borderRadius: 3, overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 3, transition: "width 0.5s ease" }} />
       </div>
     </div>
@@ -272,22 +272,22 @@ export default function App() {
 
   return (
     <div style={{
-      minHeight: "100vh", background: "#0A0E1A",
-      fontFamily: "'DM Sans', sans-serif", color: "#fff",
+      minHeight: "100vh", background: "transparent",
+      fontFamily: "'Poppins', sans-serif", color: "#fff",
       padding: "12px 16px", boxSizing: "border-box",
       display: "flex", flexDirection: "column", gap: 10,
     }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=DM+Mono:wght@400;500;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&family=DM+Mono:wght@400;500;700&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #0A0E1A; overflow: hidden; }
+        body { background: transparent; overflow: hidden; }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
       `}</style>
 
       {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ background: "linear-gradient(135deg, #043C96, #038CF1)", borderRadius: 8, padding: "5px 12px", fontWeight: 800, fontSize: 15, letterSpacing: 1 }}>iTeach</div>
+          <div style={{ background: "linear-gradient(135deg, #043C96 0%, #038CF1 50%, #00BEA8 100%)", borderRadius: 8, padding: "5px 12px", fontWeight: 800, fontSize: 15, letterSpacing: 1 }}>iTeach</div>
           <div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" }}>Call Floor Command</div>
             <div style={{ fontSize: 9, letterSpacing: 3, color: "rgba(255,255,255,0.3)", textTransform: "uppercase" }}>Live Operations Dashboard</div>
@@ -306,7 +306,7 @@ export default function App() {
           ))}
           <div style={{ width: 1, height: 30, background: "rgba(255,255,255,0.08)" }} />
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: "#00C8FF", fontFamily: "'DM Mono', monospace" }}>{timeStr}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: "#00BEA8", fontFamily: "'DM Mono', monospace" }}>{timeStr}</div>
             <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", letterSpacing: 1 }}>{dateStr}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 5, background: connected ? "rgba(0,230,118,0.1)" : "rgba(255,59,92,0.1)", border: `1px solid ${connected ? "#00E676" : "#FF3B5C"}44`, borderRadius: 20, padding: "4px 10px" }}>
@@ -325,11 +325,11 @@ export default function App() {
       </div>
 
       {/* ── Main 3-col layout ── */}
-      <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
+      <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
 
         {/* LEFT: All agents grid, sorted by status */}
         <div style={{
-          flex: 2, background: "rgba(255,255,255,0.03)",
+          flex: 2, background: "rgba(255,255,255,0.05)",
           border: "1px solid rgba(255,255,255,0.07)",
           borderRadius: 12, padding: "14px 14px",
           display: "flex", flexDirection: "column", gap: 10, minWidth: 0,
@@ -360,7 +360,7 @@ export default function App() {
 
         {/* CENTER: Floor Map */}
         <div style={{
-          width: 215, background: "rgba(255,255,255,0.02)",
+          width: 215, background: "rgba(255,255,255,0.04)",
           border: "1px solid rgba(255,255,255,0.06)",
           borderRadius: 12, padding: "14px 12px",
           display: "flex", flexDirection: "column", gap: 10, overflowY: "auto",
@@ -381,7 +381,7 @@ export default function App() {
 
         {/* RIGHT: Queue pressure */}
         <div style={{ width: 185, display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 14px" }}>
+          <div style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 14px" }}>
             <div style={{ fontSize: 9, letterSpacing: 2.5, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", marginBottom: 14 }}>Queue Pressure</div>
             <QueueBar name="Admissions" color="#038CF1" agents={agents} />
             <QueueBar name="Texas Support" color="#00BEA8" agents={agents} />
@@ -389,7 +389,7 @@ export default function App() {
           </div>
 
           {/* Status breakdown */}
-          <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 14px" }}>
+          <div style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 14px" }}>
             <div style={{ fontSize: 9, letterSpacing: 2.5, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", marginBottom: 12 }}>Status Breakdown</div>
             {[
               { label: "On Call",   val: onCallCount,   color: "#FF3B5C" },
