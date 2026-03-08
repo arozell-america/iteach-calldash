@@ -316,6 +316,17 @@ app.get('/health', (req, res) => res.json({ ok: true, agents: Object.keys(state.
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3001;
+
+// Keep-alive: ping self every 10 minutes to prevent Render free tier sleep
+const SELF_URL = process.env.RENDER_EXTERNAL_URL || 'https://iteach-calldash.onrender.com';
+setInterval(() => {
+  require('https').get(SELF_URL + '/health', (res) => {
+    console.log('Keep-alive ping:', res.statusCode);
+  }).on('error', (e) => {
+    console.log('Keep-alive failed:', e.message);
+  });
+}, 10 * 60 * 1000);
+
 server.listen(PORT, () => {
   console.log(`\n🚀 Zoom Dashboard Server running on port ${PORT}`);
   console.log(`   WebSocket:  ws://localhost:${PORT}`);
