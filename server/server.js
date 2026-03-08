@@ -77,7 +77,7 @@ function seedMockData() {
   state.stats.avgSpeedToCall = 192; // seconds
 }
 
-seedMockData();
+// seedMockData(); // disabled - agents auto-register from Zoom webhooks
 
 // ─── Simulate live updates (remove once Zoom webhooks are connected) ──────────
 let simulationInterval = setInterval(() => {
@@ -264,6 +264,24 @@ app.post('/api/agents', (req, res) => {
   state.agents[id] = { id, name, team, extension, status: 'available', callsToday: 0, enrollmentsToday: 0 };
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
   res.json(state.agents[id]);
+});
+
+// Remove agent
+app.delete("/api/agents/:id", (req, res) => {
+  const id = req.params.id;
+  if (!state.agents[id]) return res.status(404).json({ error: "Agent not found" });
+  delete state.agents[id];
+  broadcast({ type: "STATE_UPDATE", payload: getPublicState() });
+  res.json({ ok: true });
+});
+
+// Remove agent
+app.delete('/api/agents/:id', (req, res) => {
+  const id = req.params.id;
+  if (!state.agents[id]) return res.status(404).json({ error: 'Agent not found' });
+  delete state.agents[id];
+  broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+  res.json({ ok: true });
 });
 
 // Update enrollment count (call from your Salesforce webhook)
