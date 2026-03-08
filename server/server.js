@@ -122,6 +122,8 @@ app.post('/webhook/zoom', (req, res) => {
   console.log('Zoom payload:', JSON.stringify(payload, null, 2));
 
   handleZoomEvent(event, payload);
+  saveState();
+  broadcast();
   res.json({ received: true });
 });
 
@@ -132,6 +134,10 @@ function autoRegister(userId, userObj) {
     [userObj?.first_name, userObj?.last_name].filter(Boolean).join(' ') ||
     userObj?.email?.split('@')[0] || 'Unknown';
   const email = userObj?.email || '';
+  if (!email.endsWith('@iteach.net')) {
+    console.log('[autoRegister] Skipping non-iTeach user:', email);
+    return;
+  }
   let team = 'Lead Team';
   const hint = (name + ' ' + email).toLowerCase();
   if (hint.includes('cert')) team = 'Certification';
