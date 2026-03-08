@@ -9,6 +9,9 @@
  */
 
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const STATE_FILE = path.join(__dirname, 'state.json');
 const http = require('http');
 const { WebSocketServer } = require('ws');
 const crypto = require('crypto');
@@ -119,6 +122,7 @@ function seedMockData() {
 //   });
 // 
 //   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+  saveState();
 // }, 3000);
 
 // ─── WebSocket ────────────────────────────────────────────────────────────────
@@ -272,6 +276,7 @@ function handleZoomEvent(event, payload) {
   }
 
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+  saveState();
 
   // Log event
   state.callLog.unshift({ event, payload, timestamp: Date.now() });
@@ -289,6 +294,7 @@ app.post('/api/agents', (req, res) => {
   if (!id || !name) return res.status(400).json({ error: 'id and name required' });
   state.agents[id] = { id, name, team, extension, status: 'available', callsToday: 0, enrollmentsToday: 0 };
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+  saveState();
   res.json(state.agents[id]);
 });
 
@@ -307,6 +313,7 @@ app.delete('/api/agents/:id', (req, res) => {
   if (!state.agents[id]) return res.status(404).json({ error: 'Agent not found' });
   delete state.agents[id];
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+  saveState();
   res.json({ ok: true });
 });
 
@@ -317,6 +324,7 @@ app.post('/api/agents/:id/enrollment', (req, res) => {
   agent.enrollmentsToday = (agent.enrollmentsToday || 0) + 1;
   state.stats.applicationsToday++;
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+  saveState();
   res.json({ ok: true });
 });
 
@@ -333,6 +341,7 @@ app.post('/api/reset-daily', (req, res) => {
   state.stats.callsToday = 0;
   state.stats.applicationsToday = 0;
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+  saveState();
   res.json({ ok: true });
 });
 
