@@ -134,7 +134,11 @@ function handleZoomEvent(event, payload) {
     const userId = payload?.callee?.user_id || payload?.object?.callee?.user_id;
     const key = findAgentKey(userId);
     if (key) { state.agents[key].status = 'available'; state.agents[key].callStartTime = null; state.agents[key].callerId = null; state.agents[key].callsToday++; }
-  } else if (event === 'phone.caller_ringing' || event === 'phone.caller_connected') {
+  } else if (event === 'phone.caller_connected') {
+    const userId = payload?.object?.caller?.user_id || payload?.caller?.user_id;
+    const key = findAgentKey(userId);
+    if (key) { state.agents[key].status = 'on_call'; state.agents[key].callStartTime = Date.now(); state.stats.callsToday++; }
+  } else if (event === 'phone.caller_ringing') {
     const userId = payload?.caller?.user_id || payload?.object?.caller?.user_id;
     autoRegister(userId, payload?.caller);
     const key = findAgentKey(userId);
