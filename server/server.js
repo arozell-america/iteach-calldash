@@ -165,6 +165,18 @@ app.get('/webhook/zoom', (req, res) => {
   res.json({ status: 'ok', message: 'iTeach Call Floor webhook endpoint' });
 });
 
+
+// Case-insensitive agent lookup (Zoom sends IDs in lowercase)
+function findAgent(userId) {
+  if (!userId) return null;
+  const key = Object.keys(state.agents).find(k => k.toLowerCase() === userId.toLowerCase());
+  return key ? state.agents[key] : null;
+}
+function findAgentKey(userId) {
+  if (!userId) return null;
+  return Object.keys(state.agents).find(k => k.toLowerCase() === userId.toLowerCase()) || null;
+}
+
 app.post('/webhook/zoom', (req, res) => {
   // Zoom endpoint validation handshake
   if (req.body?.event === 'endpoint.url_validation') {
@@ -191,11 +203,12 @@ function handleZoomEvent(event, payload) {
 
     case 'phone_call.started': {
       const userId = payload?.operator?.id || payload?.callee?.user_id;
-      if (userId && state.agents[userId]) {
-        state.agents[userId].status = 'on_call';
-        state.agents[userId].callStartTime = Date.now();
-        state.agents[userId].callerId = payload?.caller?.phone_number || 'Unknown';
-        state.agents[userId].currentCallId = payload?.call_id;
+      const __key = findAgentKey(userId);
+      if (userId && __key) {
+        state.agents[__key].status = 'on_call';
+        state.agents[__key].callStartTime = Date.now();
+        state.agents[__key].callerId = payload?.caller?.phone_number || 'Unknown';
+        state.agents[__key].currentCallId = payload?.call_id;
         state.stats.callsToday++;
       }
       break;
@@ -203,30 +216,33 @@ function handleZoomEvent(event, payload) {
 
     case 'phone_call.ringing': {
       const userId = payload?.callee?.user_id;
-      if (userId && state.agents[userId]) {
-        state.agents[userId].status = 'ringing';
-        state.agents[userId].callerId = payload?.caller?.phone_number || 'Unknown';
+      const __key = findAgentKey(userId);
+      if (userId && __key) {
+        state.agents[__key].status = 'ringing';
+        state.agents[__key].callerId = payload?.caller?.phone_number || 'Unknown';
       }
       break;
     }
 
     case 'phone_call.answered': {
       const userId = payload?.callee?.user_id;
-      if (userId && state.agents[userId]) {
-        state.agents[userId].status = 'on_call';
-        state.agents[userId].callStartTime = Date.now();
+      const __key = findAgentKey(userId);
+      if (userId && __key) {
+        state.agents[__key].status = 'on_call';
+        state.agents[__key].callStartTime = Date.now();
       }
       break;
     }
 
     case 'phone_call.ended': {
       const userId = payload?.operator?.id || payload?.callee?.user_id;
-      if (userId && state.agents[userId]) {
-        state.agents[userId].status = 'available';
-        state.agents[userId].callStartTime = null;
-        state.agents[userId].callerId = null;
-        state.agents[userId].currentCallId = null;
-        state.agents[userId].callsToday = (state.agents[userId].callsToday || 0) + 1;
+      const __key = findAgentKey(userId);
+      if (userId && __key) {
+        state.agents[__key].status = 'available';
+        state.agents[__key].callStartTime = null;
+        state.agents[__key].callerId = null;
+        state.agents[__key].currentCallId = null;
+        state.agents[__key].callsToday = (state.agents[__key].callsToday || 0) + 1;
       }
       break;
     }
@@ -240,11 +256,12 @@ function handleZoomEvent(event, payload) {
         'In_A_Zoom_Meeting': 'meeting',
         'On_Phone_Call': 'on_call',
       };
-      if (userId && state.agents[userId]) {
+      const __key = findAgentKey(userId);
+      if (userId && __key) {
         const mapped = presenceMap[payload?.presence_status] || 'available';
         // Don't override on_call set by phone events
-        if (state.agents[userId].status !== 'on_call') {
-          state.agents[userId].status = mapped;
+        if (state.agents[__key].status !== 'on_call') {
+          state.agents[__key].status = mapped;
         }
       }
       break;
