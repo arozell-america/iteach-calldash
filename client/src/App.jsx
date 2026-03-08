@@ -5,10 +5,10 @@ const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:3001";
 const STATUS_CONFIG = {
   on_call:   { label: "On Call",   color: "#FF3B5C", bg: "rgba(255,59,92,0.18)",   dot: "#FF3B5C", pulse: true  },
   ringing:   { label: "Ringing",  color: "#FFB800", bg: "rgba(255,184,0,0.18)",   dot: "#FFB800", pulse: true  },
-  available: { label: "Available",color: "#00E676", bg: "rgba(0,230,118,0.12)",   dot: "#00E676", pulse: false },
-  away:      { label: "Away",     color: "#FF8C00", bg: "rgba(255,140,0,0.12)",   dot: "#FF8C00", pulse: false },
-  break:     { label: "Break",    color: "#7B8FA6", bg: "rgba(123,143,166,0.12)", dot: "#7B8FA6", pulse: false },
-  dnd:       { label: "DND",      color: "#FF3B5C", bg: "rgba(255,59,92,0.12)",   dot: "#FF3B5C", pulse: false },
+  available: { label: "Available",color: "#00E676", bg: "rgba(0,230,118,0.08)",   dot: "#00E676", pulse: false },
+  away:      { label: "Away",     color: "#FF8C00", bg: "rgba(255,140,0,0.10)",   dot: "#FF8C00", pulse: false },
+  break:     { label: "Break",    color: "#7B8FA6", bg: "rgba(123,143,166,0.10)", dot: "#7B8FA6", pulse: false },
+  dnd:       { label: "DND",      color: "#FF3B5C", bg: "rgba(255,59,92,0.10)",   dot: "#FF3B5C", pulse: false },
   offline:   { label: "Offline",  color: "#2A3A4A", bg: "rgba(42,58,74,0.08)",   dot: "#2A3A4A", pulse: false },
 };
 
@@ -100,43 +100,43 @@ function findAgentByName(agents, name) {
   ) || null;
 }
 
-// ─── Active Call Card (2-col grid) ───────────────────────────────────────────
-function ActiveCallCard({ agent }) {
+// ─── Agent Card ───────────────────────────────────────────────────────────────
+function AgentCard({ agent }) {
   const tick = useTick();
   const cfg = STATUS_CONFIG[agent.status] || STATUS_CONFIG.available;
   const elapsed = agent.callStartTime ? fmt((Date.now() - agent.callStartTime) / 1000) : null;
   const teamColor = TEAM_COLORS[agent.team] || "#666";
+  const isActive = agent.status === "on_call" || agent.status === "ringing";
 
   return (
     <div style={{
-      padding: "12px 14px", borderRadius: 10,
+      padding: "11px 13px", borderRadius: 10,
       background: cfg.bg,
-      border: `1px solid ${cfg.color}44`,
-      boxShadow: cfg.pulse ? `0 0 16px ${cfg.color}22` : "none",
-      display: "flex", flexDirection: "column", gap: 6,
+      border: `1px solid ${isActive ? cfg.color + "66" : "rgba(255,255,255,0.07)"}`,
+      boxShadow: isActive ? `0 0 14px ${cfg.color}22` : "none",
+      display: "flex", flexDirection: "column", gap: 5,
       transition: "all 0.3s ease",
     }}>
-      {/* Name + status dot */}
+      {/* Name row */}
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
         <div style={{
-          width: 8, height: 8, borderRadius: "50%",
-          background: cfg.dot, flexShrink: 0,
-          boxShadow: cfg.pulse ? `0 0 6px ${cfg.dot}` : "none",
+          width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+          background: cfg.dot,
+          boxShadow: cfg.pulse ? `0 0 5px ${cfg.dot}` : "none",
         }} />
         <div style={{
-          fontSize: 13, fontWeight: 700, color: "#fff",
-          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1,
+          fontSize: 13, fontWeight: 700, color: "#fff", flex: 1,
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         }}>{agent.name}</div>
       </div>
 
       {/* Team */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <div style={{ width: 3, height: 3, borderRadius: "50%", background: teamColor }} />
-        <span style={{ fontSize: 10, color: teamColor, fontWeight: 600, letterSpacing: 0.5 }}>{agent.team}</span>
+      <div style={{ paddingLeft: 14, fontSize: 10, color: teamColor, fontWeight: 600, letterSpacing: 0.3 }}>
+        {agent.team}
       </div>
 
-      {/* Status + Duration row */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      {/* Status + timer */}
+      <div style={{ paddingLeft: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{
           fontSize: 10, fontWeight: 700, color: cfg.color,
           textTransform: "uppercase", letterSpacing: 1,
@@ -162,12 +162,12 @@ function DeskCell({ seatName, agents, teamColor }) {
   const initials = seatName ? seatName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() : "";
 
   if (!seatName) return (
-    <div style={{ width: 58, height: 58, borderRadius: 7, background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.05)" }} />
+    <div style={{ width: 56, height: 56, borderRadius: 7, background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.05)" }} />
   );
 
   return (
     <div style={{
-      width: 58, height: 58, borderRadius: 7,
+      width: 56, height: 56, borderRadius: 7,
       background: agent ? cfg.bg : "rgba(255,255,255,0.03)",
       border: `2px solid ${agent ? cfg.color : "rgba(255,255,255,0.07)"}`,
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -176,10 +176,10 @@ function DeskCell({ seatName, agents, teamColor }) {
     }}>
       <div style={{ position: "absolute", top: 4, right: 4, width: 6, height: 6, borderRadius: "50%", background: agent ? cfg.dot : "#1E2A3A" }} />
       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, borderRadius: "0 0 5px 5px", background: agent ? (TEAM_COLORS[agent.team] || teamColor) : "rgba(255,255,255,0.04)" }} />
-      <div style={{ fontSize: 15, fontWeight: 700, color: agent ? cfg.color : "rgba(255,255,255,0.18)", fontFamily: "'DM Mono', monospace" }}>{initials}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: agent ? cfg.color : "rgba(255,255,255,0.18)", fontFamily: "'DM Mono', monospace" }}>{initials}</div>
       {elapsed
         ? <div style={{ fontSize: 8, color: cfg.color, fontFamily: "'DM Mono', monospace" }}>{elapsed}</div>
-        : <div style={{ fontSize: 7, color: agent ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.12)", maxWidth: 52, textAlign: "center", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{seatName.split(" ")[0]}</div>
+        : <div style={{ fontSize: 7, color: agent ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.12)", maxWidth: 50, textAlign: "center", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{seatName.split(" ")[0]}</div>
       }
     </div>
   );
@@ -199,11 +199,11 @@ function Pod({ pod, agents }) {
           <div style={{ width: 7, height: 7, borderRadius: 2, background: pod.color }} />
           <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: pod.color, textTransform: "uppercase" }}>{pod.label}</span>
         </div>
-        <div style={{ display: "flex", gap: 8, fontSize: 9, color: "rgba(255,255,255,0.3)" }}>
+        <div style={{ display: "flex", gap: 7, fontSize: 9 }}>
           {onCall > 0 && <span style={{ color: "#FF3B5C" }}>●{onCall}</span>}
           {ringing > 0 && <span style={{ color: "#FFB800" }}>●{ringing}</span>}
           {available > 0 && <span style={{ color: "#00E676" }}>●{available}</span>}
-          {onCall === 0 && ringing === 0 && available === 0 && <span>offline</span>}
+          {onCall === 0 && ringing === 0 && available === 0 && <span style={{ color: "rgba(255,255,255,0.2)" }}>offline</span>}
         </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
@@ -220,13 +220,10 @@ function Pod({ pod, agents }) {
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 function StatCard({ label, value, color, sub }) {
   return (
-    <div style={{
-      flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)",
-      borderRadius: 10, padding: "14px 18px",
-    }}>
-      <div style={{ fontSize: 9, letterSpacing: 2, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 30, fontWeight: 700, color, fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", marginTop: 4 }}>{sub}</div>}
+    <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "13px 16px" }}>
+      <div style={{ fontSize: 9, letterSpacing: 2, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", marginBottom: 5 }}>{label}</div>
+      <div style={{ fontSize: 28, fontWeight: 700, color, fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", marginTop: 3 }}>{sub}</div>}
     </div>
   );
 }
@@ -257,9 +254,15 @@ export default function App() {
 
   const agents = data?.agents || {};
   const stats = data?.stats || {};
-  const manualAgents = Object.values(agents).filter(a => !a.autoRegistered);
-  const activeAgents = manualAgents.filter(a => a.status === "on_call" || a.status === "ringing")
-    .sort((a, b) => (b.callStartTime || 0) - (a.callStartTime || 0));
+
+  const manualAgents = Object.values(agents)
+    .filter(a => !a.autoRegistered)
+    .sort((a, b) => {
+      // Sort: on_call first, then ringing, then available, then rest
+      const order = { on_call: 0, ringing: 1, available: 2, away: 3, break: 3, dnd: 3, offline: 4 };
+      return (order[a.status] ?? 5) - (order[b.status] ?? 5);
+    });
+
   const onCallCount = manualAgents.filter(a => a.status === "on_call").length;
   const ringingCount = manualAgents.filter(a => a.status === "ringing").length;
   const availableCount = manualAgents.filter(a => a.status === "available").length;
@@ -291,7 +294,11 @@ export default function App() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
-          {[{ label: "On Call", val: onCallCount, color: "#FF3B5C" }, { label: "Ringing", val: ringingCount, color: "#FFB800" }, { label: "Available", val: availableCount, color: "#00E676" }].map(({ label, val, color }) => (
+          {[
+            { label: "On Call",   val: onCallCount,   color: "#FF3B5C" },
+            { label: "Ringing",   val: ringingCount,  color: "#FFB800" },
+            { label: "Available", val: availableCount, color: "#00E676" },
+          ].map(({ label, val, color }) => (
             <div key={label} style={{ textAlign: "center" }}>
               <div style={{ fontSize: 22, fontWeight: 700, color, fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>{val}</div>
               <div style={{ fontSize: 8, letterSpacing: 1.5, color: "rgba(255,255,255,0.3)", textTransform: "uppercase" }}>{label}</div>
@@ -320,42 +327,42 @@ export default function App() {
       {/* ── Main 3-col layout ── */}
       <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
 
-        {/* LEFT: Active Calls — 2-col grid, high focus */}
+        {/* LEFT: All agents grid, sorted by status */}
         <div style={{
           flex: 2, background: "rgba(255,255,255,0.03)",
           border: "1px solid rgba(255,255,255,0.07)",
-          borderRadius: 12, padding: "14px 16px",
+          borderRadius: 12, padding: "14px 14px",
           display: "flex", flexDirection: "column", gap: 10, minWidth: 0,
         }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 10, letterSpacing: 2.5, color: "rgba(255,255,255,0.3)", textTransform: "uppercase" }}>Active Calls</div>
-            <div style={{ fontSize: 11, color: activeAgents.length > 0 ? "#FF3B5C" : "rgba(255,255,255,0.2)", fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>
-              {activeAgents.length} active
+            <div style={{ fontSize: 10, letterSpacing: 2.5, color: "rgba(255,255,255,0.3)", textTransform: "uppercase" }}>Agent Status</div>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", fontFamily: "'DM Mono', monospace" }}>
+              {manualAgents.length} agents
             </div>
           </div>
 
-          {activeAgents.length === 0 ? (
+          {manualAgents.length === 0 ? (
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>📞</div>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.2)" }}>No active calls</div>
+                <div style={{ fontSize: 28, marginBottom: 8 }}>👥</div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.2)" }}>No agents registered</div>
               </div>
             </div>
           ) : (
             <div style={{
               display: "grid", gridTemplateColumns: "1fr 1fr",
-              gap: 8, overflowY: "auto",
+              gap: 8, overflowY: "auto", alignContent: "start",
             }}>
-              {activeAgents.map(agent => <ActiveCallCard key={agent.id} agent={agent} />)}
+              {manualAgents.map(agent => <AgentCard key={agent.id} agent={agent} />)}
             </div>
           )}
         </div>
 
-        {/* CENTER: Floor Map — narrow, 3 pods stacked */}
+        {/* CENTER: Floor Map */}
         <div style={{
-          width: 220, background: "rgba(255,255,255,0.02)",
+          width: 215, background: "rgba(255,255,255,0.02)",
           border: "1px solid rgba(255,255,255,0.06)",
-          borderRadius: 12, padding: "14px 14px",
+          borderRadius: 12, padding: "14px 12px",
           display: "flex", flexDirection: "column", gap: 10, overflowY: "auto",
         }}>
           <div style={{ fontSize: 9, letterSpacing: 3, color: "rgba(255,255,255,0.25)", textTransform: "uppercase" }}>Floor Map</div>
@@ -372,8 +379,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* RIGHT: Queue + Stats sidebar */}
-        <div style={{ width: 190, display: "flex", flexDirection: "column", gap: 10 }}>
+        {/* RIGHT: Queue pressure */}
+        <div style={{ width: 185, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 14px" }}>
             <div style={{ fontSize: 9, letterSpacing: 2.5, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", marginBottom: 14 }}>Queue Pressure</div>
             <QueueBar name="Admissions" color="#038CF1" agents={agents} />
@@ -381,22 +388,24 @@ export default function App() {
             <QueueBar name="National Support" color="#C1FD34" agents={agents} />
           </div>
 
-          {/* Available agents list */}
-          <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 14px", flex: 1, overflow: "hidden" }}>
-            <div style={{ fontSize: 9, letterSpacing: 2.5, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", marginBottom: 10 }}>Available</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5, overflowY: "auto", maxHeight: 260 }}>
-              {manualAgents.filter(a => a.status === "available").length === 0 ? (
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.18)", textAlign: "center", padding: "16px 0" }}>None available</div>
-              ) : manualAgents.filter(a => a.status === "available").map(agent => (
-                <div key={agent.id} style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 8px", borderRadius: 7, background: "rgba(0,230,118,0.06)", border: "1px solid rgba(0,230,118,0.15)" }}>
-                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#00E676", flexShrink: 0 }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{agent.name}</div>
-                    <div style={{ fontSize: 9, color: TEAM_COLORS[agent.team] || "rgba(255,255,255,0.3)" }}>{agent.team}</div>
-                  </div>
+          {/* Status breakdown */}
+          <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 14px" }}>
+            <div style={{ fontSize: 9, letterSpacing: 2.5, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", marginBottom: 12 }}>Status Breakdown</div>
+            {[
+              { label: "On Call",   val: onCallCount,   color: "#FF3B5C" },
+              { label: "Ringing",   val: ringingCount,  color: "#FFB800" },
+              { label: "Available", val: availableCount, color: "#00E676" },
+              { label: "Away/DND",  val: manualAgents.filter(a => ["away","dnd","break"].includes(a.status)).length, color: "#FF8C00" },
+              { label: "Offline",   val: manualAgents.filter(a => a.status === "offline").length, color: "#3D4B5C" },
+            ].map(({ label, val, color }) => (
+              <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{label}</span>
                 </div>
-              ))}
-            </div>
+                <span style={{ fontSize: 13, fontWeight: 700, color, fontFamily: "'DM Mono', monospace" }}>{val}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>

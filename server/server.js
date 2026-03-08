@@ -1,3 +1,8 @@
+/**
+ * iTeach Call Floor Dashboard - Backend Server
+ * Receives Zoom webhooks → broadcasts to dashboard via WebSocket
+ */
+
 const express = require('express');
 const http = require('http');
 const { WebSocketServer } = require('ws');
@@ -9,6 +14,7 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+// CORS - allow requests from any origin (including local file:// admin page)
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
@@ -17,6 +23,8 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json());
+
+// ─── State ────────────────────────────────────────────────────────────────────
 
 const state = {
   agents: {},
@@ -31,6 +39,8 @@ const state = {
   callLog: [],
   stats: { callsToday: 0, applicationsToday: 0, avgSpeedToCall: null },
 };
+
+// ─── Persistence ──────────────────────────────────────────────────────────────
 
 const STATE_FILE = path.join(__dirname, 'state.json');
 
@@ -53,24 +63,33 @@ function loadState() {
 
 loadState();
 
+// ─── WebSocket ────────────────────────────────────────────────────────────────
+
 function broadcast(message) {
   const data = JSON.stringify(message);
-  wss.clients.forEach(client => { if (client.readyState === 1) client.send(data); });
+  wss.clients.forEach(client => {
+    if (client.readyState === 1) client.send(data);
+  });
 }
 
 wss.on('connection', (ws) => {
+  console.log('Dashboard client connected');
   ws.send(JSON.stringify({ type: 'STATE_UPDATE', payload: getPublicState() }));
-  ws.on('close', () => {});
+  ws.on('close', () => console.log('Dashboard client disconnected'));
 });
 
 function getPublicState() {
   return { agents: state.agents, queues: state.queues, stats: state.stats, timestamp: Date.now() };
 }
 
+// ─── Agent Lookup (case-insensitive — Zoom sends IDs lowercase) ───────────────
+
 function findAgentKey(userId) {
   if (!userId) return null;
   return Object.keys(state.agents).find(k => k.toLowerCase() === userId.toLowerCase()) || null;
 }
+
+// ─── Zoom Webhook ─────────────────────────────────────────────────────────────
 
 function verifyZoomWebhook(req) {
   const secret = process.env.ZOOM_WEBHOOK_SECRET_TOKEN;
@@ -80,39 +99,44 @@ function verifyZoomWebhook(req) {
   return req.headers['x-zm-signature'] === `v0=${hash}`;
 }
 
-app.get('/webhook/zoom', (req, res) => res.json({ status: 'ok' }));
+app.get('/webhook/zoom', (req, res) => {
+  res.json({ status: 'ok' });
+});
 
 app.post('/webhook/zoom', (req, res) => {
   if (req.body?.event === 'endpoint.url_validation') {
-    const hash = crypto.createHmac('sha256', process.env.ZOOM_WEBHOOK_SECRET_TOKEN || '')
-      .update(req.body.payload.plainToken).digest('hex');
+    const hash = crypto
+      .createHmac('sha256', process.env.ZOOM_WEBHOOK_SECRET_TOKEN || '')
+      .update(req.body.payload.plainToken)
+      .digest('hex');
     return res.json({ plainToken: req.body.payload.plainToken, encryptedToken: hash });
   }
+
   if (!verifyZoomWebhook(req)) return res.status(401).json({ error: 'Invalid signature' });
+
   const { event, payload } = req.body;
-  console.log('Zoom event:', event, JSON.stringify(payload));
+  console.log('Zoom event name:', event);
+  console.log('Zoom payload:', JSON.stringify(payload, null, 2));
+
   handleZoomEvent(event, payload);
   res.json({ received: true });
 });
 
+// Auto-register agent from webhook payload
 function autoRegister(userId, userObj) {
   if (!userId || findAgentKey(userId)) return;
-  const email = userObj?.email || '';
-  if (!email || !email.toLowerCase().includes('iteach.net')) {
-    console.log('Skipping non-iTeach user:', email || userId);
-    return;
-  }
-  const existingByEmail = Object.values(state.agents).find(a => a.email && a.email.toLowerCase() === email.toLowerCase());
-  if (existingByEmail) return;
   const name = userObj?.display_name || userObj?.name ||
     [userObj?.first_name, userObj?.last_name].filter(Boolean).join(' ') ||
     userObj?.email?.split('@')[0] || 'Unknown';
+  const email = userObj?.email || '';
   let team = 'Lead Team';
   const hint = (name + ' ' + email).toLowerCase();
   if (hint.includes('cert')) team = 'Certification';
   else if (hint.includes('curr')) team = 'Curriculum';
+  else if (hint.includes('support') || hint.includes('tech')) team = 'Engagement';
+  console.log(`Auto-registering: ${name} (${userId})`);
   state.agents[userId] = {
-    id: userId, name, team, extension: '', email,
+    id: userId, name, team, extension: userObj?.extension_number || '', email,
     status: 'available', callStartTime: null, callerId: null,
     enrollmentsToday: 0, callsToday: 0, autoRegistered: true,
   };
@@ -120,52 +144,103 @@ function autoRegister(userId, userObj) {
 }
 
 function handleZoomEvent(event, payload) {
-  if (event === 'phone.callee_ringing' || event === 'phone.ringing') {
+  console.log('[ZOOM EVENT]', event, JSON.stringify(payload).slice(0, 200));
+
+  // Callee side (inbound) — supports both phone. and phone_call. prefixes
+  if (['phone.callee_ringing', 'phone_call.callee_ringing', 'phone_call.ringing'].includes(event)) {
     const userId = payload?.callee?.user_id || payload?.object?.callee?.user_id;
     autoRegister(userId, payload?.callee || payload?.object?.callee);
     const key = findAgentKey(userId);
-    if (key) { state.agents[key].status = 'ringing'; state.agents[key].callerId = payload?.caller?.phone_number || 'Unknown'; }
-  } else if (event === 'phone.callee_answered' || event === 'phone.answered') {
+    if (key) {
+      state.agents[key].status = 'ringing';
+      state.agents[key].callerId = payload?.caller?.phone_number || payload?.object?.caller?.phone_number || 'Unknown';
+    }
+  }
+
+  else if (['phone.callee_answered', 'phone_call.callee_answered', 'phone_call.answered'].includes(event)) {
     const userId = payload?.callee?.user_id || payload?.object?.callee?.user_id;
-    autoRegister(userId, payload?.callee);
+    autoRegister(userId, payload?.callee || payload?.object?.callee);
     const key = findAgentKey(userId);
-    if (key) { state.agents[key].status = 'on_call'; state.agents[key].callStartTime = Date.now(); state.stats.callsToday++; }
-  } else if (event === 'phone.callee_ended' || event === 'phone.ended') {
+    if (key) {
+      state.agents[key].status = 'on_call';
+      state.agents[key].callStartTime = Date.now();
+      state.stats.callsToday++;
+    }
+  }
+
+  else if (['phone.callee_ended', 'phone_call.callee_ended', 'phone_call.ended'].includes(event)) {
     const userId = payload?.callee?.user_id || payload?.object?.callee?.user_id;
     const key = findAgentKey(userId);
-    if (key) { state.agents[key].status = 'available'; state.agents[key].callStartTime = null; state.agents[key].callerId = null; state.agents[key].callsToday++; }
-  } else if (event === 'phone.caller_connected') {
-    const userId = payload?.object?.caller?.user_id || payload?.caller?.user_id;
-    const key = findAgentKey(userId);
-    if (key) { state.agents[key].status = 'on_call'; state.agents[key].callStartTime = Date.now(); state.stats.callsToday++; }
-  } else if (event === 'phone.caller_ringing') {
+    if (key) {
+      state.agents[key].status = 'available';
+      state.agents[key].callStartTime = null;
+      state.agents[key].callerId = null;
+      state.agents[key].callsToday = (state.agents[key].callsToday || 0) + 1;
+    }
+  }
+
+  // Caller side (outbound) — supports both phone. and phone_call. prefixes
+  else if (['phone.caller_ringing', 'phone_call.caller_ringing', 'phone_call.started'].includes(event)) {
     const userId = payload?.caller?.user_id || payload?.object?.caller?.user_id;
-    autoRegister(userId, payload?.caller);
+    autoRegister(userId, payload?.caller || payload?.object?.caller);
     const key = findAgentKey(userId);
-    if (key) { state.agents[key].status = 'ringing'; state.agents[key].callerId = 'Outbound'; }
-  } else if (event === 'phone.caller_answered') {
+    if (key) {
+      state.agents[key].status = 'ringing';
+      state.agents[key].callerId = payload?.callee?.phone_number || payload?.object?.callee?.phone_number || 'Outbound';
+    }
+  }
+
+  else if (['phone.caller_connected', 'phone_call.caller_answered', 'phone_call.caller_connected'].includes(event)) {
     const userId = payload?.caller?.user_id || payload?.object?.caller?.user_id;
     const key = findAgentKey(userId);
-    if (key) { state.agents[key].status = 'on_call'; state.agents[key].callStartTime = Date.now(); state.stats.callsToday++; }
-  } else if (event === 'phone.caller_ended') {
+    if (key) {
+      state.agents[key].status = 'on_call';
+      state.agents[key].callStartTime = Date.now();
+      state.stats.callsToday++;
+    }
+  }
+
+  else if (['phone.caller_ended', 'phone_call.caller_ended'].includes(event)) {
     const userId = payload?.caller?.user_id || payload?.object?.caller?.user_id;
     const key = findAgentKey(userId);
-    if (key) { state.agents[key].status = 'available'; state.agents[key].callStartTime = null; state.agents[key].callerId = null; state.agents[key].callsToday++; }
-  } else if (event === 'user.presence_status_updated') {
-    const userId = payload?.id || payload?.object?.id;
+    if (key) {
+      state.agents[key].status = 'available';
+      state.agents[key].callStartTime = null;
+      state.agents[key].callerId = null;
+      state.agents[key].callsToday = (state.agents[key].callsToday || 0) + 1;
+    }
+  }
+
+  // Presence
+  else if (event === 'user.presence_status_updated') {
+    const userId = payload?.id || payload?.user_id || payload?.object?.id;
     autoRegister(userId, payload?.object || payload);
     const key = findAgentKey(userId);
-    const presenceMap = { 'Available':'available','Away':'away','Do_Not_Disturb':'dnd','On_Phone_Call':'on_call','Offline':'offline' };
+    const presenceMap = {
+      'Available': 'available', 'Away': 'away',
+      'Do_Not_Disturb': 'dnd', 'In_A_Zoom_Meeting': 'meeting',
+      'On_Phone_Call': 'on_call', 'Offline': 'offline',
+    };
     if (key) {
       const mapped = presenceMap[payload?.presence_status || payload?.object?.presence_status] || 'available';
-      if (state.agents[key].status !== 'on_call') state.agents[key].status = mapped;
+      if (state.agents[key].status !== 'on_call') {
+        state.agents[key].status = mapped;
+      }
     }
-  } else {
-    console.log('Unhandled event:', event);
   }
+
+  else {
+    console.log('Unhandled Zoom event:', event);
+  }
+
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
   saveState();
+
+  state.callLog.unshift({ event, payload, timestamp: Date.now() });
+  if (state.callLog.length > 500) state.callLog.pop();
 }
+
+// ─── REST API ─────────────────────────────────────────────────────────────────
 
 app.get('/api/state', (req, res) => res.json(getPublicState()));
 
@@ -179,18 +254,12 @@ app.post('/api/agents', (req, res) => {
 });
 
 app.delete('/api/agents/:id', (req, res) => {
-  const key = findAgentKey(req.params.id);
+  const id = req.params.id;
+  const key = findAgentKey(id);
   if (!key) return res.status(404).json({ error: 'Agent not found' });
   delete state.agents[key];
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
   saveState();
-  res.json({ ok: true });
-});
-
-app.post('/api/nuke-agents', (req, res) => {
-  state.agents = {};
-  try { saveState(); } catch(e) {}
-  broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
   res.json({ ok: true });
 });
 
@@ -205,9 +274,10 @@ app.post('/api/agents/:id/enrollment', (req, res) => {
 });
 
 app.post('/api/reset-daily', (req, res) => {
-  Object.values(state.agents).forEach(a => { a.callsToday = 0; a.enrollmentsToday = 0; a.status = 'available'; a.callStartTime = null; });
+  Object.values(state.agents).forEach(a => { a.callsToday = 0; a.enrollmentsToday = 0; });
   Object.values(state.queues).forEach(q => { q.callsHandled = 0; q.waiting = 0; });
-  state.stats.callsToday = 0; state.stats.applicationsToday = 0;
+  state.stats.callsToday = 0;
+  state.stats.applicationsToday = 0;
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
   saveState();
   res.json({ ok: true });
@@ -215,9 +285,19 @@ app.post('/api/reset-daily', (req, res) => {
 
 app.get('/health', (req, res) => res.json({ ok: true, agents: Object.keys(state.agents).length }));
 
+// ─── Keep-alive (prevents Render free tier sleep) ─────────────────────────────
+
+const SELF_URL = process.env.RENDER_EXTERNAL_URL || 'https://iteach-calldash.onrender.com';
 setInterval(() => {
-  require('https').get('https://iteach-calldash.onrender.com/health', () => {}).on('error', () => {});
+  require('https').get(SELF_URL + '/health', (res) => {
+    console.log('Keep-alive ping:', res.statusCode);
+  }).on('error', (e) => console.log('Keep-alive failed:', e.message));
 }, 10 * 60 * 1000);
 
+// ─── Start ────────────────────────────────────────────────────────────────────
+
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => console.log(`iTeach Call Floor Server on port ${PORT}, agents: ${Object.keys(state.agents).length}`));
+server.listen(PORT, () => {
+  console.log(`\n🚀 iTeach Call Floor Server running on port ${PORT}`);
+  console.log(`   Agents loaded: ${Object.keys(state.agents).length}`);
+});
