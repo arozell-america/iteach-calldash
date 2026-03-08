@@ -144,7 +144,11 @@ function autoRegister(userId, userObj) {
 }
 
 function handleZoomEvent(event, payload) {
-  console.log('[ZOOM EVENT]', event, JSON.stringify(payload).slice(0, 200));
+  console.log('[ZOOM EVENT]', event);
+  const caller_uid = payload?.caller?.user_id || payload?.object?.caller?.user_id;
+  const callee_uid = payload?.callee?.user_id || payload?.object?.callee?.user_id;
+  console.log('[ZOOM IDs] caller_uid:', caller_uid, 'callee_uid:', callee_uid);
+  console.log('[ZOOM AGENTS]', Object.keys(state.agents));
 
   // Callee side (inbound) — supports both phone. and phone_call. prefixes
   if (['phone.callee_ringing', 'phone_call.callee_ringing', 'phone_call.ringing'].includes(event)) {
