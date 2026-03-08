@@ -285,6 +285,80 @@ app.post('/api/reset-daily', (req, res) => {
 
 app.get('/health', (req, res) => res.json({ ok: true, agents: Object.keys(state.agents).length }));
 
+// ─── Zoom Presence Polling ────────────────────────────────────────────────────
+
+const ZOOM_ACCOUNT_ID    = process.env.ZOOM_ACCOUNT_ID;
+const ZOOM_CLIENT_ID     = process.env.ZOOM_CLIENT_ID;
+const ZOOM_CLIENT_SECRET = process.env.ZOOM_CLIENT_SECRET;
+
+let zoomAccessToken = null;
+let zoomTokenExpiry = 0;
+
+async function getZoomToken() {
+  if (zoomAccessToken && Date.now() < zoomTokenExpiry - 60000) return zoomAccessToken;
+  try {
+    const creds = Buffer.from(ZOOM_CLIENT_ID + ":" + ZOOM_CLIENT_SECRET).toString("base64");
+    const res = await fetch(
+      "https://zoom.us/oauth/token?grant_type=account_credentials&account_id=" + ZOOM_ACCOUNT_ID,
+      { method: "POST", headers: { Authorization: "Basic " + creds } }
+    );
+    const data = await res.json();
+    if (data.access_token) {
+      zoomAccessToken = data.access_token;
+      zoomTokenExpiry = Date.now() + (data.expires_in * 1000);
+      console.log("[Zoom] Token refreshed, expires in", data.expires_in, "s");
+      return zoomAccessToken;
+    }
+    console.error("[Zoom] Token error:", data);
+    return null;
+  } catch (e) {
+    console.error("[Zoom] Token fetch failed:", e.message);
+    return null;
+  }
+}
+
+async function pollPresence() {
+  if (!ZOOM_ACCOUNT_ID || !ZOOM_CLIENT_ID || !ZOOM_CLIENT_SECRET) return;
+  const token = await getZoomToken();
+  if (!token) return;
+
+  const presenceMap = {
+    "Available":         "available",
+    "Away":              "away",
+    "Do_Not_Disturb":    "dnd",
+    "In_A_Zoom_Meeting": "meeting",
+    "On_Phone_Call":     "on_call",
+    "Offline":           "offline",
+    "Busy":              "dnd",
+  };
+
+  const agentIds = Object.keys(state.agents);
+  for (const key of agentIds) {
+    const agent = state.agents[key];
+    if (agent.status === "on_call" || agent.status === "ringing") continue;
+    try {
+      const res = await fetch("https://api.zoom.us/v2/users/" + key + "/presence_status", {
+        headers: { Authorization: "Bearer " + token }
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const mapped = presenceMap[data.presence_status] || "offline";
+      if (state.agents[key].status !== mapped) {
+        console.log("[Presence]", agent.name + ":", state.agents[key].status, "->", mapped);
+        state.agents[key].status = mapped;
+      }
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, 250));
+  }
+
+  saveState();
+  broadcast();
+}
+
+setTimeout(pollPresence, 5000);
+setInterval(pollPresence, 60 * 1000);
+console.log("[Presence] Polling enabled — every 60s");
+
 // ─── Keep-alive (prevents Render free tier sleep) ─────────────────────────────
 
 const SELF_URL = process.env.RENDER_EXTERNAL_URL || 'https://iteach-calldash.onrender.com';
