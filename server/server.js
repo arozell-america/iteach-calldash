@@ -164,8 +164,10 @@ function handleZoomEvent(event, payload) {
     const userId = payload?.callee?.user_id || payload?.object?.callee?.user_id;
     autoRegister(userId, payload?.callee || payload?.object?.callee);
     const key = findAgentKey(userId);
+    console.log('[caller_ringing] key:', key);
     if (key) {
       state.agents[key].status = 'ringing';
+      console.log('[caller_ringing] SET ringing:', state.agents[key].name);
       state.agents[key].callerId = payload?.caller?.phone_number || payload?.object?.caller?.phone_number || 'Unknown';
     }
   }
@@ -174,8 +176,10 @@ function handleZoomEvent(event, payload) {
     const userId = payload?.callee?.user_id || payload?.object?.callee?.user_id;
     autoRegister(userId, payload?.callee || payload?.object?.callee);
     const key = findAgentKey(userId);
+    console.log('[caller_connected] key:', key);
     if (key) {
       state.agents[key].status = 'on_call';
+      console.log('[caller_connected] SET on_call:', state.agents[key].name);
       state.agents[key].callStartTime = Date.now();
       state.stats.callsToday++;
     }
@@ -184,8 +188,10 @@ function handleZoomEvent(event, payload) {
   else if (['phone.callee_ended', 'phone_call.callee_ended', 'phone_call.ended'].includes(event)) {
     const userId = payload?.callee?.user_id || payload?.object?.callee?.user_id;
     const key = findAgentKey(userId);
+    console.log('[caller_ended] key:', key);
     if (key) {
       state.agents[key].status = 'available';
+      console.log('[caller_ended] SET available:', state.agents[key].name);
       state.agents[key].callStartTime = null;
       state.agents[key].callerId = null;
       state.agents[key].callsToday = (state.agents[key].callsToday || 0) + 1;
@@ -197,8 +203,10 @@ function handleZoomEvent(event, payload) {
     const userId = payload?.caller?.user_id || payload?.object?.caller?.user_id;
     autoRegister(userId, payload?.caller || payload?.object?.caller);
     const key = findAgentKey(userId);
+    console.log('[caller_ringing] key:', key);
     if (key) {
       state.agents[key].status = 'ringing';
+      console.log('[caller_ringing] SET ringing:', state.agents[key].name);
       state.agents[key].callerId = payload?.callee?.phone_number || payload?.object?.callee?.phone_number || 'Outbound';
     }
   }
@@ -206,8 +214,10 @@ function handleZoomEvent(event, payload) {
   else if (['phone.caller_connected', 'phone_call.caller_answered', 'phone_call.caller_connected'].includes(event)) {
     const userId = payload?.caller?.user_id || payload?.object?.caller?.user_id;
     const key = findAgentKey(userId);
+    console.log('[caller_connected] key:', key);
     if (key) {
       state.agents[key].status = 'on_call';
+      console.log('[caller_connected] SET on_call:', state.agents[key].name);
       state.agents[key].callStartTime = Date.now();
       state.stats.callsToday++;
     }
@@ -216,8 +226,10 @@ function handleZoomEvent(event, payload) {
   else if (['phone.caller_ended', 'phone_call.caller_ended'].includes(event)) {
     const userId = payload?.caller?.user_id || payload?.object?.caller?.user_id;
     const key = findAgentKey(userId);
+    console.log('[caller_ended] key:', key);
     if (key) {
       state.agents[key].status = 'available';
+      console.log('[caller_ended] SET available:', state.agents[key].name);
       state.agents[key].callStartTime = null;
       state.agents[key].callerId = null;
       state.agents[key].callsToday = (state.agents[key].callsToday || 0) + 1;
@@ -236,7 +248,10 @@ function handleZoomEvent(event, payload) {
     };
     if (key) {
       const mapped = presenceMap[payload?.presence_status || payload?.object?.presence_status] || 'available';
-      if (state.agents[key].status !== 'on_call') {
+      // Don't let presence override an active call (ringing or on_call)
+      const isActive = ['on_call', 'ringing'].includes(state.agents[key].status);
+      if (!isActive || mapped === 'on_call') {
+        console.log('[Presence webhook]', state.agents[key].name + ':', state.agents[key].status, '->', mapped);
         state.agents[key].status = mapped;
       }
     }
