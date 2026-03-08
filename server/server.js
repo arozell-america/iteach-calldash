@@ -98,7 +98,7 @@ app.post('/webhook/zoom', (req, res) => {
 function autoRegister(userId, userObj) {
   if (!userId || findAgentKey(userId)) return;
   const email = userObj?.email || '';
-  if (email && !email.toLowerCase().includes('iteach.net')) {
+  if (!email || !email.toLowerCase().includes('iteach.net')) {
     console.log('Skipping non-iTeach user:', email);
     return;
   }
