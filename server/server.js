@@ -89,36 +89,36 @@ function seedMockData() {
 // ─── Simulate live updates (remove once Zoom webhooks are connected) ──────────
 // DISABLED - Zoom webhooks handle real status
 // let simulationInterval = setInterval(() => {
-  const ids = Object.keys(state.agents);
-  // Randomly flip 1–2 agents' statuses
-  const count = Math.floor(Math.random() * 2) + 1;
-  for (let i = 0; i < count; i++) {
-    const id = ids[Math.floor(Math.random() * ids.length)];
-    const agent = state.agents[id];
-    const transitions = {
-      available: 'on_call',
-      on_call:   'available',
-      ringing:   'on_call',
-      break:     'available',
-    };
-    if (!agent) return;
-  const newStatus = transitions[agent.status] || 'available';
-    state.agents[id] = {
-      ...agent,
-      status: newStatus,
-      callStartTime: newStatus === 'on_call' ? Date.now() : null,
-      callerId: newStatus === 'on_call' ? '+1-555-' + Math.floor(1000 + Math.random() * 9000) : null,
-    };
-    if (newStatus === 'on_call') state.stats.callsToday++;
-  }
-
-  // Fluctuate queue waiting
-  Object.values(state.queues).forEach(q => {
-    q.waiting = Math.max(0, q.waiting + Math.floor(Math.random() * 3) - 1);
-    q.avgWait = Math.max(10, q.avgWait + Math.floor(Math.random() * 20) - 10);
-  });
-
-  broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+//   const ids = Object.keys(state.agents);
+//   // Randomly flip 1–2 agents' statuses
+//   const count = Math.floor(Math.random() * 2) + 1;
+//   for (let i = 0; i < count; i++) {
+//     const id = ids[Math.floor(Math.random() * ids.length)];
+//     const agent = state.agents[id];
+//     const transitions = {
+//       available: 'on_call',
+//       on_call:   'available',
+//       ringing:   'on_call',
+//       break:     'available',
+//     };
+//     if (!agent) return;
+//   const newStatus = transitions[agent.status] || 'available';
+//     state.agents[id] = {
+//       ...agent,
+//       status: newStatus,
+//       callStartTime: newStatus === 'on_call' ? Date.now() : null,
+//       callerId: newStatus === 'on_call' ? '+1-555-' + Math.floor(1000 + Math.random() * 9000) : null,
+//     };
+//     if (newStatus === 'on_call') state.stats.callsToday++;
+//   }
+// 
+//   // Fluctuate queue waiting
+//   Object.values(state.queues).forEach(q => {
+//     q.waiting = Math.max(0, q.waiting + Math.floor(Math.random() * 3) - 1);
+//     q.avgWait = Math.max(10, q.avgWait + Math.floor(Math.random() * 20) - 10);
+//   });
+// 
+//   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
 // }, 3000);
 
 // ─── WebSocket ────────────────────────────────────────────────────────────────
