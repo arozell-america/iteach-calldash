@@ -392,6 +392,78 @@ setTimeout(pollPresence, 5000);
 setInterval(pollPresence, 60 * 1000);
 console.log("[Presence] Polling enabled — every 60s");
 
+// ─── Salesforce Great Call Polling ────────────────────────────────────────────
+
+let sfAccessToken = null;
+
+async function getSfAccessToken() {
+  const params = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: process.env.SF_CLIENT_ID,
+    client_secret: process.env.SF_CLIENT_SECRET,
+    refresh_token: process.env.SF_REFRESH_TOKEN,
+  });
+  const res = await fetch(`${process.env.SF_INSTANCE_URL}/services/oauth2/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params,
+  });
+  const data = await res.json();
+  if (!data.access_token) throw new Error('SF auth failed: ' + JSON.stringify(data));
+  sfAccessToken = data.access_token;
+  return sfAccessToken;
+}
+
+async function pollGreatCalls() {
+  try {
+    if (!process.env.SF_CLIENT_ID || !process.env.SF_REFRESH_TOKEN) return;
+    if (!sfAccessToken) await getSfAccessToken();
+
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const query = `SELECT LastModifiedBy.Name, COUNT(Id) total FROM Contact WHERE Great_Call__c = ${today} GROUP BY LastModifiedBy.Name`;
+    const url = `${process.env.SF_INSTANCE_URL}/services/data/v59.0/query?q=${encodeURIComponent(query)}`;
+
+    let res = await fetch(url, { headers: { Authorization: `Bearer ${sfAccessToken}` } });
+
+    // Token expired — refresh and retry once
+    if (res.status === 401) {
+      await getSfAccessToken();
+      res = await fetch(url, { headers: { Authorization: `Bearer ${sfAccessToken}` } });
+    }
+
+    const data = await res.json();
+    if (!data.records) { console.log('[SF] No records:', JSON.stringify(data)); return; }
+
+    // Build a map: agentName -> count
+    const greatCallMap = {};
+    for (const row of data.records) {
+      greatCallMap[row.LastModifiedBy.Name.toLowerCase()] = row.total;
+    }
+
+    // Update each agent's greatCallsToday
+    let totalGreatCalls = 0;
+    for (const key of Object.keys(state.agents)) {
+      const agent = state.agents[key];
+      const agentName = agent.name?.toLowerCase();
+      const count = agentName ? (greatCallMap[agentName] || 0) : 0;
+      state.agents[key].greatCallsToday = count;
+      totalGreatCalls += count;
+    }
+    state.stats.greatCallsToday = totalGreatCalls;
+
+    saveState();
+    broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+    console.log(`[SF] Great calls today: ${totalGreatCalls}`);
+  } catch (e) {
+    console.log('[SF] Poll error:', e.message);
+    sfAccessToken = null; // force re-auth next time
+  }
+}
+
+setTimeout(pollGreatCalls, 10000);
+setInterval(pollGreatCalls, 60 * 1000);
+console.log('[SF] Great call polling enabled — every 60s');
+
 // ─── Keep-alive (prevents Render free tier sleep) ─────────────────────────────
 
 const SELF_URL = process.env.RENDER_EXTERNAL_URL || 'https://iteach-calldash.onrender.com';
