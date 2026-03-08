@@ -119,7 +119,7 @@ function seedMockData() {
   });
 
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
-}, 3000);
+// }, 3000);
 
 // ─── WebSocket ────────────────────────────────────────────────────────────────
 
