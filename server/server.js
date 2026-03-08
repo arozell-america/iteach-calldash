@@ -123,7 +123,7 @@ app.post('/webhook/zoom', (req, res) => {
 
   handleZoomEvent(event, payload);
   saveState();
-  broadcast();
+  broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
   res.json({ received: true });
 });
 
@@ -385,7 +385,7 @@ async function pollPresence() {
   }
 
   saveState();
-  broadcast();
+  broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
 }
 
 setTimeout(pollPresence, 5000);
