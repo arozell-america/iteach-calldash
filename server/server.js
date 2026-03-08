@@ -458,8 +458,7 @@ async function pollGreatCalls() {
     if (!process.env.SF_CLIENT_ID || !process.env.SF_REFRESH_TOKEN) return;
     if (!sfAccessToken) await getSfAccessToken();
 
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    const query = `SELECT LastModifiedBy.Name, COUNT(Id) total FROM Contact WHERE Great_Call__c = ${today} GROUP BY LastModifiedBy.Name`;
+    const query = `SELECT LastModifiedBy.Name, COUNT(Id) total FROM Contact WHERE Great_Call__c = TODAY GROUP BY LastModifiedBy.Name`;
     const url = `${process.env.SF_INSTANCE_URL}/services/data/v59.0/query?q=${encodeURIComponent(query)}`;
 
     let res = await fetch(url, { headers: { Authorization: `Bearer ${sfAccessToken}` } });
