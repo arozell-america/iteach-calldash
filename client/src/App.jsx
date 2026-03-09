@@ -355,7 +355,7 @@ export default function App() {
               }}>{lead}</button>
             );
           })}
-        </div>
+        </div>}
 
         {/* Main layout */}
         {tvMode ? (
