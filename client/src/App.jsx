@@ -26,9 +26,9 @@ const TEAM_COLORS = {
 
 const TEAM_LEADS = {
   "All": ["Admissions","Texas Support","National Support","Lead Team","Educational","Relational","Engagement","Certification","Curriculum"],
-  "Erica Redgraves": ["Admissions","National Support","Texas Support","Engagement"],
-  "Luis Tovar": ["Relational"],
-  "Abby Hinnrichs": ["Certification"],
+  "Educational Team": ["Admissions","National Support","Texas Support","Engagement"],
+  "Certification Team": ["Certification"],
+  "Relational Team": ["Relational"],
 };
 
 const FLOOR_LAYOUT = {
