@@ -210,6 +210,7 @@ function handleZoomEvent(event, payload) {
       state.agents[key].status = 'on_call';
       console.log('[caller_connected] SET on_call:', state.agents[key].name);
       state.agents[key].callStartTime = Date.now();
+      state.agents[key].callDirection = 'inbound';
       state.stats.callsToday++;
     }
   }
@@ -223,6 +224,7 @@ function handleZoomEvent(event, payload) {
       console.log('[caller_ended] SET available:', state.agents[key].name);
       state.agents[key].callStartTime = null;
       state.agents[key].callerId = null;
+      state.agents[key].callDirection = null;
       state.agents[key].callsToday = (state.agents[key].callsToday || 0) + 1;
     }
   }
@@ -248,6 +250,7 @@ function handleZoomEvent(event, payload) {
       state.agents[key].status = 'on_call';
       console.log('[caller_connected] SET on_call:', state.agents[key].name);
       state.agents[key].callStartTime = Date.now();
+      state.agents[key].callDirection = 'outbound';
       state.stats.callsToday++;
     }
   }
@@ -261,6 +264,7 @@ function handleZoomEvent(event, payload) {
       console.log('[caller_ended] SET available:', state.agents[key].name);
       state.agents[key].callStartTime = null;
       state.agents[key].callerId = null;
+      state.agents[key].callDirection = null;
       state.agents[key].callsToday = (state.agents[key].callsToday || 0) + 1;
     }
   }
@@ -530,6 +534,36 @@ async function pollGreatCalls() {
 setTimeout(pollGreatCalls, 10000);
 setInterval(pollGreatCalls, 60 * 1000);
 console.log('[SF] Great call polling enabled — every 60s');
+
+// ─── Daily Midnight Reset ────────────────────────────────────────────────────
+
+function scheduleMidnightReset() {
+  const now = new Date();
+  // Calculate ms until next midnight CT (UTC-6 standard, UTC-5 daylight)
+  const ct = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+  const nextMidnight = new Date(ct);
+  nextMidnight.setHours(24, 0, 0, 0);
+  const msUntilMidnight = nextMidnight - ct;
+
+  console.log(`[Reset] Next daily reset in ${Math.round(msUntilMidnight / 60000)} minutes`);
+
+  setTimeout(() => {
+    console.log('[Reset] Running daily reset...');
+    Object.values(state.agents).forEach(a => {
+      a.callsToday = 0;
+      a.enrollmentsToday = 0;
+      a.greatCallsToday = 0;
+    });
+    state.stats.callsToday = 0;
+    state.stats.greatCallsToday = 0;
+    saveState();
+    broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+    console.log('[Reset] Daily reset complete');
+    scheduleMidnightReset(); // schedule next one
+  }, msUntilMidnight);
+}
+
+scheduleMidnightReset();
 
 // ─── Keep-alive (prevents Render free tier sleep) ─────────────────────────────
 

@@ -109,25 +109,42 @@ function findAgentByName(agents, name) {
 function AgentCard({ agent }) {
   const tick = useTick();
   const cfg = STATUS_CONFIG[agent.status] || STATUS_CONFIG.available;
-  const elapsed = agent.callStartTime ? fmt((Date.now() - agent.callStartTime) / 1000) : null;
+  const elapsedSecs = agent.callStartTime ? (Date.now() - agent.callStartTime) / 1000 : 0;
+  const elapsed = elapsedSecs > 0 ? fmt(elapsedSecs) : null;
   const teamColor = TEAM_COLORS[agent.team] || "#666";
   const isActive = agent.status === "on_call" || agent.status === "ringing";
   const nameParts = (agent.name || "").trim().split(" ");
   const firstName = nameParts[0] || "";
   const lastName = nameParts.slice(1).join(" ") || "";
 
+  // Duration alert: amber >8min, red >15min
+  const isLong = elapsedSecs > 8 * 60;
+  const isCritical = elapsedSecs > 15 * 60;
+  const alertColor = isCritical ? "#FF3B5C" : isLong ? "#FF8C00" : null;
+
+  // Inbound/outbound indicator
+  const direction = agent.callDirection;
+  const dirLabel = direction === "inbound" ? "↙ IN" : direction === "outbound" ? "↗ OUT" : null;
+
+  const borderColor = alertColor
+    ? alertColor + "99"
+    : isActive ? cfg.color + "55" : "rgba(255,255,255,0.12)";
+  const glowColor = alertColor
+    ? `0 0 20px ${alertColor}55`
+    : isActive ? `0 0 16px ${cfg.color}22` : "none";
+
   return (
     <div style={{
       padding: "14px 11px 12px", borderRadius: 10,
-      background: isActive ? cfg.bg : "rgba(255,255,255,0.07)",
-      border: `1px solid ${isActive ? cfg.color + "55" : "rgba(255,255,255,0.12)"}`,
-      boxShadow: isActive ? `0 0 16px ${cfg.color}22` : "none",
+      background: alertColor ? \`rgba(\${isCritical ? "255,59,92" : "255,140,0"},0.15)\` : isActive ? cfg.bg : "rgba(255,255,255,0.07)",
+      border: \`1px solid \${borderColor}\`,
+      boxShadow: glowColor,
       display: "flex", flexDirection: "column", gap: 4,
       transition: "all 0.3s ease", position: "relative",
       minHeight: 90,
     }}>
       {/* Status dot */}
-      <div style={{ position: "absolute", top: 10, left: 10, width: 7, height: 7, borderRadius: "50%", background: cfg.dot, boxShadow: cfg.pulse ? `0 0 6px ${cfg.dot}` : "none" }} />
+      <div style={{ position: "absolute", top: 10, left: 10, width: 7, height: 7, borderRadius: "50%", background: alertColor || cfg.dot, boxShadow: \`0 0 6px \${alertColor || cfg.dot}\` }} />
       {/* Team top-right */}
       <div style={{ position: "absolute", top: 8, right: 9, fontSize: 9, color: teamColor, fontWeight: 700, letterSpacing: 0.3 }}>{agent.team}</div>
       {/* Name stacked */}
@@ -135,12 +152,13 @@ function AgentCard({ agent }) {
         <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{firstName}</div>
         {lastName && <div style={{ fontSize: 11, fontWeight: 400, color: "rgba(255,255,255,0.55)", lineHeight: 1.2 }}>{lastName}</div>}
       </div>
-      {/* Status + timer */}
+      {/* Status + direction + timer */}
       <div style={{ paddingLeft: 16, display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: cfg.color, textTransform: "uppercase", letterSpacing: 0.8 }}>{cfg.label}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: alertColor || cfg.color, textTransform: "uppercase", letterSpacing: 0.8 }}>{cfg.label}</span>
+          {dirLabel && <span style={{ fontSize: 9, fontWeight: 700, color: direction === "inbound" ? "#00BEA8" : "#038CF1", background: direction === "inbound" ? "rgba(0,190,168,0.15)" : "rgba(3,140,241,0.15)", borderRadius: 4, padding: "1px 5px", letterSpacing: 0.5 }}>{dirLabel}</span>}
         </div>
-        {elapsed && <span style={{ fontSize: 13, fontWeight: 700, color: cfg.color, fontFamily: "'DM Mono', monospace" }}>{elapsed}</span>}
+        {elapsed && <span style={{ fontSize: 13, fontWeight: 700, color: alertColor || cfg.color, fontFamily: "'DM Mono', monospace" }}>{elapsed}</span>}
       </div>
     </div>
   );
