@@ -5,7 +5,7 @@ const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:3001";
 const STATUS_CONFIG = {
   on_call:   { label: "On Call",   color: "#FF3B5C", bg: "rgba(255,59,92,0.22)",   dot: "#FF3B5C", pulse: true  },
   ringing:   { label: "Ringing",  color: "#FFB800", bg: "rgba(255,184,0,0.22)",   dot: "#FFB800", pulse: true  },
-  available: { label: "Available",color: "#C1FD34", bg: "rgba(193,253,52,0.10)",  dot: "#C1FD34", pulse: false },
+  available: { label: "At Desk",color: "#C1FD34", bg: "rgba(193,253,52,0.10)",  dot: "#C1FD34", pulse: false },
   away:      { label: "Away",     color: "#FF8C00", bg: "rgba(255,140,0,0.12)",   dot: "#FF8C00", pulse: false },
   break:     { label: "Break",    color: "#7B8FA6", bg: "rgba(123,143,166,0.12)", dot: "#7B8FA6", pulse: false },
   dnd:       { label: "DND",      color: "#FF3B5C", bg: "rgba(255,59,92,0.12)",   dot: "#FF3B5C", pulse: false },
@@ -260,6 +260,7 @@ export default function App() {
   const now = useClock();
 
   const [selectedLead, setSelectedLead] = useState("All");
+  const [tvMode, setTvMode] = useState(false);
   const agents = data?.agents || {};
   const stats = data?.stats || {};
 
@@ -325,6 +326,7 @@ export default function App() {
               <div style={{ width: 6, height: 6, borderRadius: "50%", background: connected ? "#C1FD34" : "#FF3B5C", animation: connected ? "pulse 2s infinite" : "none" }} />
               <span style={{ fontSize: 9, fontWeight: 600, color: connected ? "#C1FD34" : "#FF3B5C", letterSpacing: 1 }}>{connected ? "LIVE" : "CONNECTING"}</span>
             </div>
+            <button onClick={() => setTvMode(t => !t)} title="Toggle TV Mode" style={{ background: tvMode ? "rgba(193,253,52,0.15)" : "rgba(255,255,255,0.08)", border: `1px solid ${tvMode ? "#C1FD34" : "rgba(255,255,255,0.2)"}`, borderRadius: 8, padding: "4px 10px", cursor: "pointer", color: tvMode ? "#C1FD34" : "rgba(255,255,255,0.5)", fontSize: 13, fontFamily: "'Poppins', sans-serif" }}>📺</button>
           </div>
         </div>
 
@@ -333,11 +335,11 @@ export default function App() {
           <StatCard label="Calls Today" value={stats.callsToday || 0} color="#038CF1" />
           <StatCard label="Great Calls ⭐" value={stats.greatCallsToday || 0} color="#FFD700" sub="Flagged by agents" />
           <StatCard label="On Call Now" value={onCallCount} color="#FF3B5C" sub={`${ringingCount} ringing`} />
-          <StatCard label="Available" value={availableCount} color="#C1FD34" sub={`of ${manualAgents.length} agents`} />
+          <StatCard label="At Desk" value={availableCount} color="#C1FD34" sub="Zoom open, not on call" />
         </div>
 
         {/* Team Lead Filter */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        {!tvMode && <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ fontSize: 9, letterSpacing: 2, color: "rgba(255,255,255,0.35)", textTransform: "uppercase" }}>View</span>
           {Object.keys(TEAM_LEADS).map(lead => {
             const isActive = selectedLead === lead;
@@ -356,6 +358,50 @@ export default function App() {
         </div>
 
         {/* Main layout */}
+        {tvMode ? (
+          // ── TV / Wall Display Mode ──────────────────────────────────────────
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
+            {manualAgents.map(agent => {
+              const cfg = STATUS_CONFIG[agent.status] || STATUS_CONFIG.available;
+              const tick2 = agent.callStartTime; // just to trigger re-render
+              const elapsedSecs = agent.callStartTime ? (Date.now() - agent.callStartTime) / 1000 : 0;
+              const elapsed = elapsedSecs > 0 ? fmt(elapsedSecs) : null;
+              const teamColor = TEAM_COLORS[agent.team] || "#666";
+              const isActive = agent.status === "on_call" || agent.status === "ringing";
+              const isLong = elapsedSecs > 8 * 60;
+              const isCritical = elapsedSecs > 15 * 60;
+              const alertColor = isCritical ? "#FF3B5C" : isLong ? "#FF8C00" : null;
+              const nameParts = (agent.name || "").trim().split(" ");
+              const firstName = nameParts[0] || "";
+              const lastName = nameParts.slice(1).join(" ") || "";
+              const dirLabel = agent.callDirection === "inbound" ? "↙ IN" : agent.callDirection === "outbound" ? "↗ OUT" : null;
+              return (
+                <div key={agent.id} style={{
+                  padding: "20px 16px 16px", borderRadius: 14, minHeight: 140,
+                  background: alertColor ? `rgba(${isCritical ? "255,59,92" : "255,140,0"},0.18)` : isActive ? cfg.bg : "rgba(255,255,255,0.08)",
+                  border: `2px solid ${alertColor ? alertColor + "99" : isActive ? cfg.color + "66" : "rgba(255,255,255,0.14)"}`,
+                  boxShadow: alertColor ? `0 0 24px ${alertColor}55` : isActive ? `0 0 20px ${cfg.color}33` : "none",
+                  display: "flex", flexDirection: "column", gap: 6, position: "relative",
+                  transition: "all 0.3s ease",
+                }}>
+                  <div style={{ position: "absolute", top: 12, left: 12, width: 9, height: 9, borderRadius: "50%", background: alertColor || cfg.dot, boxShadow: `0 0 8px ${alertColor || cfg.dot}` }} />
+                  <div style={{ position: "absolute", top: 10, right: 12, fontSize: 10, color: teamColor, fontWeight: 700 }}>{agent.team}</div>
+                  <div style={{ paddingLeft: 20, paddingRight: 60 }}>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: "#fff", lineHeight: 1.1 }}>{firstName}</div>
+                    <div style={{ fontSize: 14, fontWeight: 400, color: "rgba(255,255,255,0.55)" }}>{lastName}</div>
+                  </div>
+                  <div style={{ paddingLeft: 20, display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: alertColor || cfg.color, textTransform: "uppercase", letterSpacing: 1 }}>{cfg.label}</span>
+                      {dirLabel && <span style={{ fontSize: 10, fontWeight: 700, color: agent.callDirection === "inbound" ? "#00BEA8" : "#038CF1", background: agent.callDirection === "inbound" ? "rgba(0,190,168,0.15)" : "rgba(3,140,241,0.15)", borderRadius: 4, padding: "2px 6px" }}>{dirLabel}</span>}
+                    </div>
+                    {elapsed && <span style={{ fontSize: 18, fontWeight: 700, color: alertColor || cfg.color, fontFamily: "'DM Mono', monospace" }}>{elapsed}</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
         <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
 
           {/* Left: Agents */}
@@ -383,7 +429,7 @@ export default function App() {
             <Pod pod={FLOOR_LAYOUT.texas} agents={agents} />
             <Pod pod={FLOOR_LAYOUT.national} agents={agents} />
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, paddingTop: 4 }}>
-              {[["on_call","On Call"],["ringing","Ringing"],["available","Available"],["offline","Offline"]].map(([k,l]) => (
+              {[["on_call","On Call"],["ringing","Ringing"],["available","At Desk"],["offline","Offline"]].map(([k,l]) => (
                 <div key={k} style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <div style={{ width: 6, height: 6, borderRadius: "50%", background: STATUS_CONFIG[k].dot }} />
                   <span style={{ fontSize: 8, color: "rgba(255,255,255,0.35)" }}>{l}</span>
@@ -408,7 +454,7 @@ export default function App() {
               {[
                 { label: "On Call",   val: onCallCount,   color: "#FF3B5C" },
                 { label: "Ringing",   val: ringingCount,  color: "#FFB800" },
-                { label: "Available", val: availableCount, color: "#C1FD34" },
+                { label: "At Desk",   val: availableCount, color: "#C1FD34" },
                 { label: "Away/DND",  val: manualAgents.filter(a => ["away","dnd","break"].includes(a.status)).length, color: "#FF8C00" },
                 { label: "Offline",   val: manualAgents.filter(a => a.status === "offline").length, color: "#4A5568" },
               ].map(({ label, val, color }) => (
@@ -448,6 +494,7 @@ export default function App() {
             )}
           </div>
         </div>
+        )}
       </div>
     </>
   );
