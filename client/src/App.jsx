@@ -136,15 +136,15 @@ function AgentCard({ agent }) {
   return (
     <div style={{
       padding: "14px 11px 12px", borderRadius: 10,
-      background: alertColor ? \`rgba(\${isCritical ? "255,59,92" : "255,140,0"},0.15)\` : isActive ? cfg.bg : "rgba(255,255,255,0.07)",
-      border: \`1px solid \${borderColor}\`,
+      background: alertColor ? (isCritical ? "rgba(255,59,92,0.15)" : "rgba(255,140,0,0.15)") : isActive ? cfg.bg : "rgba(255,255,255,0.07)",
+      border: "1px solid " + borderColor,
       boxShadow: glowColor,
       display: "flex", flexDirection: "column", gap: 4,
       transition: "all 0.3s ease", position: "relative",
       minHeight: 90,
     }}>
       {/* Status dot */}
-      <div style={{ position: "absolute", top: 10, left: 10, width: 7, height: 7, borderRadius: "50%", background: alertColor || cfg.dot, boxShadow: \`0 0 6px \${alertColor || cfg.dot}\` }} />
+      <div style={{ position: "absolute", top: 10, left: 10, width: 7, height: 7, borderRadius: "50%", background: alertColor || cfg.dot, boxShadow: "0 0 6px " + (alertColor || cfg.dot) }} />
       {/* Team top-right */}
       <div style={{ position: "absolute", top: 8, right: 9, fontSize: 9, color: teamColor, fontWeight: 700, letterSpacing: 0.3 }}>{agent.team}</div>
       {/* Name stacked */}
