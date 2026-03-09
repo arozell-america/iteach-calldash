@@ -93,8 +93,8 @@ function useClock() {
 }
 
 function useTick() {
-  const [t, setT] = useState(0);
-  useEffect(() => { const i = setInterval(() => setT(x => x + 1), 1000); return () => clearInterval(i); }, []);
+  const [t, setT] = useState(Date.now());
+  useEffect(() => { const i = setInterval(() => setT(Date.now()), 1000); return () => clearInterval(i); }, []);
   return t;
 }
 
@@ -107,9 +107,9 @@ function findAgentByName(agents, name) {
 }
 
 function AgentCard({ agent }) {
-  const tick = useTick();
+  const tick = useTick(); // forces re-render every second
   const cfg = STATUS_CONFIG[agent.status] || STATUS_CONFIG.available;
-  const elapsedSecs = agent.callStartTime ? (Date.now() - agent.callStartTime) / 1000 : 0;
+  const elapsedSecs = agent.callStartTime ? (tick - agent.callStartTime) / 1000 : 0;
   const elapsed = elapsedSecs > 0 ? fmt(elapsedSecs) : null;
   const teamColor = TEAM_COLORS[agent.team] || "#666";
   const isActive = agent.status === "on_call" || agent.status === "ringing";
@@ -363,8 +363,8 @@ export default function App() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
             {manualAgents.map(agent => {
               const cfg = STATUS_CONFIG[agent.status] || STATUS_CONFIG.available;
-              const tick2 = agent.callStartTime; // just to trigger re-render
-              const elapsedSecs = agent.callStartTime ? (Date.now() - agent.callStartTime) / 1000 : 0;
+              const now = Date.now();
+              const elapsedSecs = agent.callStartTime ? (now - agent.callStartTime) / 1000 : 0;
               const elapsed = elapsedSecs > 0 ? fmt(elapsedSecs) : null;
               const teamColor = TEAM_COLORS[agent.team] || "#666";
               const isActive = agent.status === "on_call" || agent.status === "ringing";

@@ -175,7 +175,7 @@ function autoRegister(userId, userObj) {
   console.log(`Auto-registering: ${name} (${userId})`);
   state.agents[userId] = {
     id: userId, name, team, extension: userObj?.extension_number || '', email,
-    status: 'available', callStartTime: null, callerId: null,
+    status: 'available', callStartTime: null, callerId: null, callDirection: null,
     enrollmentsToday: 0, callsToday: 0, autoRegistered: true,
   };
   saveState();
@@ -211,7 +211,6 @@ function handleZoomEvent(event, payload) {
       console.log('[caller_connected] SET on_call:', state.agents[key].name);
       state.agents[key].callStartTime = Date.now();
       state.agents[key].callDirection = 'inbound';
-      state.stats.callsToday++;
     }
   }
 
@@ -226,6 +225,7 @@ function handleZoomEvent(event, payload) {
       state.agents[key].callerId = null;
       state.agents[key].callDirection = null;
       state.agents[key].callsToday = (state.agents[key].callsToday || 0) + 1;
+      state.stats.callsToday++;
     }
   }
 
@@ -251,7 +251,6 @@ function handleZoomEvent(event, payload) {
       console.log('[caller_connected] SET on_call:', state.agents[key].name);
       state.agents[key].callStartTime = Date.now();
       state.agents[key].callDirection = 'outbound';
-      state.stats.callsToday++;
     }
   }
 
@@ -266,6 +265,7 @@ function handleZoomEvent(event, payload) {
       state.agents[key].callerId = null;
       state.agents[key].callDirection = null;
       state.agents[key].callsToday = (state.agents[key].callsToday || 0) + 1;
+      state.stats.callsToday++;
     }
   }
 
