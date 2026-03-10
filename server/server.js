@@ -286,8 +286,20 @@ function handleZoomEvent(event, payload) {
       // Don't let presence override an active call (ringing or on_call)
       const isActive = ['on_call', 'ringing'].includes(state.agents[key].status);
       if (!isActive || mapped === 'on_call') {
-        console.log('[Presence webhook]', state.agents[key].name + ':', state.agents[key].status, '->', mapped);
+        const prev = state.agents[key].status;
+        console.log('[Presence webhook]', state.agents[key].name + ':', prev, '->', mapped);
         state.agents[key].status = mapped;
+        // Set callStartTime when transitioning into on_call via presence
+        if (mapped === 'on_call' && prev !== 'on_call') {
+          state.agents[key].callStartTime = state.agents[key].callStartTime || Date.now();
+        }
+        // Clear callStartTime when leaving on_call via presence
+        if (mapped !== 'on_call' && prev === 'on_call') {
+          state.agents[key].callStartTime = null;
+          state.agents[key].callDirection = null;
+          state.agents[key].callsToday = (state.agents[key].callsToday || 0) + 1;
+          state.stats.callsToday++;
+        }
       }
     }
   }
