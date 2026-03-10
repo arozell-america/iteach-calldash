@@ -10,6 +10,7 @@ const STATUS_CONFIG = {
   break:     { label: "Break",    color: "#7B8FA6", bg: "rgba(123,143,166,0.12)", dot: "#7B8FA6", pulse: false },
   dnd:       { label: "DND",      color: "#FF3B5C", bg: "rgba(255,59,92,0.12)",   dot: "#FF3B5C", pulse: false },
   offline:   { label: "Offline",  color: "#4A5568", bg: "rgba(74,85,104,0.10)",   dot: "#4A5568", pulse: false },
+  meeting:   { label: "In Meeting", color: "#A78BFA", bg: "rgba(167,139,250,0.15)", dot: "#A78BFA", pulse: true  },
 };
 
 const TEAM_COLORS = {
@@ -429,7 +430,7 @@ export default function App() {
             <Pod pod={FLOOR_LAYOUT.texas} agents={agents} />
             <Pod pod={FLOOR_LAYOUT.national} agents={agents} />
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, paddingTop: 4 }}>
-              {[["on_call","On Call"],["ringing","Ringing"],["available","At Desk"],["offline","Offline"]].map(([k,l]) => (
+              {[["on_call","On Call"],["ringing","Ringing"],["available","At Desk"],["meeting","In Meeting"],["offline","Offline"]].map(([k,l]) => (
                 <div key={k} style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <div style={{ width: 6, height: 6, borderRadius: "50%", background: STATUS_CONFIG[k].dot }} />
                   <span style={{ fontSize: 8, color: "rgba(255,255,255,0.35)" }}>{l}</span>
