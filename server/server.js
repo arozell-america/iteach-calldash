@@ -292,6 +292,7 @@ function handleZoomEvent(event, payload) {
         // Set callStartTime when transitioning into on_call via presence
         if (mapped === 'on_call' && prev !== 'on_call') {
           state.agents[key].callStartTime = state.agents[key].callStartTime || Date.now();
+          state.agents[key].callDirection = state.agents[key].callDirection || 'inbound';
         }
         // Clear callStartTime when leaving on_call via presence
         if (mapped !== 'on_call' && prev === 'on_call') {
