@@ -437,7 +437,6 @@ async function pollPresence() {
   const agentIds = Object.keys(state.agents);
   for (const key of agentIds) {
     const agent = state.agents[key];
-    if (agent.status === "on_call" || agent.status === "ringing") continue;
     try {
       const res = await fetch("https://api.zoom.us/v2/users/" + key + "/presence_status", {
         headers: { Authorization: "Bearer " + token }
@@ -446,8 +445,21 @@ async function pollPresence() {
       const data = await res.json();
       const mapped = presenceMap[data.presence_status] || "offline";
       if (state.agents[key].status !== mapped) {
-        console.log("[Presence]", agent.name + ":", state.agents[key].status, "->", mapped);
+        const prev = state.agents[key].status;
+        console.log("[Presence poll]", agent.name + ":", prev, "->", mapped);
         state.agents[key].status = mapped;
+        // Transitioning INTO on_call
+        if (mapped === 'on_call' && prev !== 'on_call') {
+          state.agents[key].callStartTime = state.agents[key].callStartTime || Date.now();
+          state.agents[key].callDirection = state.agents[key].callDirection || 'inbound';
+        }
+        // Transitioning OUT OF on_call — call ended
+        if (mapped !== 'on_call' && prev === 'on_call') {
+          state.agents[key].callStartTime = null;
+          state.agents[key].callDirection = null;
+          state.agents[key].callsToday = (state.agents[key].callsToday || 0) + 1;
+          state.stats.callsToday++;
+        }
       }
     } catch (e) {}
     await new Promise(r => setTimeout(r, 250));
