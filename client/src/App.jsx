@@ -70,7 +70,7 @@ function fmtMins(secs) {
   return `${Math.floor(secs / 60)}m ${Math.round(secs % 60)}s`;
 }
 
-// ─── Threshold helper ────────────────────────────────────────────────────────
+// ─── Threshold helpers ───────────────────────────────────────────────────────
 
 function thresholdColor(val, green, yellow) {
   if (val <= green) return "#C1FD34";
@@ -78,76 +78,48 @@ function thresholdColor(val, green, yellow) {
   return "#FF3B5C";
 }
 
-function thresholdColorInverse(val, green, yellow) {
-  if (val >= green) return "#C1FD34";
-  if (val >= yellow) return "#FFB800";
-  return "#FF3B5C";
-}
-
-// ─── Components ──────────────────────────────────────────────────────────────
+// ─── Shared Components ──────────────────────────────────────────────────────
 
 function KpiTile({ label, value, sub, color, size = "normal" }) {
   const isLarge = size === "large";
   return (
     <div style={{
-      flex: 1, minWidth: isLarge ? 160 : 120,
+      flex: 1, minWidth: isLarge ? 150 : 110,
       background: "rgba(255,255,255,0.06)", border: `1px solid ${color}33`,
-      borderRadius: 12, padding: isLarge ? "16px 18px" : "12px 14px",
+      borderRadius: 12, padding: isLarge ? "14px 16px" : "10px 12px",
       borderLeft: `3px solid ${color}`,
     }}>
       <div style={{ fontSize: 9, letterSpacing: 2, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: isLarge ? 32 : 24, fontWeight: 700, color, fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: isLarge ? 30 : 22, fontWeight: 700, color, fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>{value}</div>
       {sub && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>{sub}</div>}
     </div>
   );
 }
 
-function SectionHeader({ color, label, icon }) {
+function PlaceholderKpi({ label, sub }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+    <div style={{
+      flex: 1, minWidth: 110,
+      background: "rgba(255,255,255,0.03)", border: "1px dashed rgba(255,255,255,0.12)",
+      borderRadius: 12, padding: "10px 12px", opacity: 0.6,
+    }}>
+      <div style={{ fontSize: 9, letterSpacing: 2, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: "rgba(255,255,255,0.2)", fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>—</div>
+      <div style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", marginTop: 3 }}>{sub || "Coming soon"}</div>
+    </div>
+  );
+}
+
+function SectionHeader({ color, label }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
       <div style={{ width: 10, height: 10, borderRadius: 3, background: color }} />
-      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2.5, color, textTransform: "uppercase" }}>{icon} {label}</span>
+      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2.5, color, textTransform: "uppercase" }}>{label}</span>
     </div>
   );
 }
 
-function HourlyChart({ hourlyVolume }) {
-  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
-  const currentHour = now.getHours();
-  const max = Math.max(...hourlyVolume, 1);
-  const startHour = 7;
-  const endHour = 20;
-  const hours = [];
-  for (let h = startHour; h <= endHour; h++) hours.push(h);
-
-  return (
-    <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "12px 10px 6px" }}>
-      <div style={{ fontSize: 9, letterSpacing: 2, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", marginBottom: 10 }}>Calls by Hour (CT)</div>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 80 }}>
-        {hours.map(h => {
-          const val = hourlyVolume[h] || 0;
-          const pct = (val / max) * 100;
-          const isCurrent = h === currentHour;
-          const isPast = h < currentHour;
-          return (
-            <div key={h} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-              {val > 0 && <span style={{ fontSize: 8, color: "rgba(255,255,255,0.5)", fontFamily: "'DM Mono', monospace" }}>{val}</span>}
-              <div style={{
-                width: "100%", minHeight: 3,
-                height: `${Math.max(pct, 4)}%`,
-                background: isCurrent ? "#038CF1" : isPast ? "rgba(3,140,241,0.5)" : "rgba(255,255,255,0.1)",
-                borderRadius: 2, transition: "height 0.3s ease",
-              }} />
-              <span style={{ fontSize: 7, color: isCurrent ? "#038CF1" : "rgba(255,255,255,0.3)", fontFamily: "'DM Mono', monospace" }}>
-                {h > 12 ? h - 12 : h}{h >= 12 ? "p" : "a"}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+// ─── Live Tab Components ─────────────────────────────────────────────────────
 
 function AgentCard({ agent, tick }) {
   const cfg = STATUS_CONFIG[agent.status] || STATUS_CONFIG.available;
@@ -191,78 +163,137 @@ function AgentCard({ agent, tick }) {
   );
 }
 
-function AgentRow({ agent, tick }) {
-  const cfg = STATUS_CONFIG[agent.status] || STATUS_CONFIG.available;
-  const elapsedSecs = agent.callStartTime ? (tick - agent.callStartTime) / 1000 : 0;
-  const isLong = elapsedSecs > 8 * 60;
-  const isCritical = elapsedSecs > 15 * 60;
-  const alertColor = isCritical ? "#DC2626" : isLong ? "#FF3B5C" : null;
-  const teamColor = TEAM_COLORS[agent.team] || "#666";
+function StatusSummaryBar({ manualAgents }) {
+  const counts = [
+    { label: "On Call", val: manualAgents.filter(a => a.status === "on_call").length, color: "#FF8C00" },
+    { label: "Ringing", val: manualAgents.filter(a => a.status === "ringing").length, color: "#FFB800" },
+    { label: "At Desk", val: manualAgents.filter(a => a.status === "available").length, color: "#C1FD34" },
+    { label: "Away/DND", val: manualAgents.filter(a => ["away", "dnd", "break"].includes(a.status)).length, color: "#FF8C00" },
+    { label: "In Meeting", val: manualAgents.filter(a => a.status === "meeting").length, color: "#A78BFA" },
+    { label: "Offline", val: manualAgents.filter(a => a.status === "offline").length, color: "#4A5568" },
+  ];
+  const total = manualAgents.length || 1;
 
   return (
-    <div style={{
-      display: "grid", gridTemplateColumns: "1fr 90px 70px 55px 55px 55px",
-      gap: 8, alignItems: "center", padding: "8px 12px", borderRadius: 6,
-      background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.06)",
-      fontSize: 11,
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <div style={{ width: 6, height: 6, borderRadius: "50%", background: alertColor || cfg.dot }} />
-        <span style={{ fontWeight: 600, color: "#fff" }}>{agent.name}</span>
-        <span style={{ fontSize: 8, color: teamColor, fontWeight: 600 }}>{agent.team}</span>
+    <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "10px 12px" }}>
+      <div style={{ display: "flex", gap: 2, height: 6, borderRadius: 3, overflow: "hidden", marginBottom: 8 }}>
+        {counts.filter(c => c.val > 0).map(c => (
+          <div key={c.label} style={{ flex: c.val, background: c.color, transition: "flex 0.5s ease" }} />
+        ))}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        <span style={{ fontSize: 9, fontWeight: 700, color: alertColor || cfg.color, textTransform: "uppercase" }}>{cfg.label}</span>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        {counts.map(c => (
+          <div key={c.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: c.color }} />
+            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.5)" }}>{c.label}</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: c.color, fontFamily: "'DM Mono', monospace" }}>{c.val}</span>
+          </div>
+        ))}
       </div>
-      <div style={{ fontFamily: "'DM Mono', monospace", color: alertColor || cfg.color, fontSize: 10 }}>
-        {elapsedSecs > 0 ? fmt(elapsedSecs) : "—"}
-      </div>
-      <div style={{ fontFamily: "'DM Mono', monospace", color: "#038CF1", textAlign: "center" }}>{agent.callsToday || 0}</div>
-      <div style={{ fontFamily: "'DM Mono', monospace", color: "#00BEA8", textAlign: "center" }}>{agent.enrollmentsToday || 0}</div>
-      <div style={{ fontFamily: "'DM Mono', monospace", color: "#FFD700", textAlign: "center" }}>{agent.greatCallsToday || 0}</div>
     </div>
   );
 }
 
-function InsightsPanel({ agents, stats, hourlyVolume }) {
+function LiveTab({ manualAgents, tick, stats }) {
+  const onCallCount = manualAgents.filter(a => a.status === "on_call").length;
+  const ringingCount = manualAgents.filter(a => a.status === "ringing").length;
+  const availableCount = manualAgents.filter(a => a.status === "available").length;
+  const offlineCount = manualAgents.filter(a => a.status === "offline").length;
+  const totalActive = manualAgents.length - offlineCount;
+  const utilization = totalActive > 0 ? Math.round((onCallCount / totalActive) * 100) : 0;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Live KPIs */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <KpiTile label="On Call" value={onCallCount} color="#FF8C00" sub={`${ringingCount} ringing`} size="large" />
+        <KpiTile label="Available" value={availableCount} color="#C1FD34" sub={`of ${totalActive} active`} size="large" />
+        <KpiTile label="Utilization" value={`${utilization}%`} color={thresholdColor(utilization, 60, 80)} sub={`${onCallCount} of ${totalActive}`} size="large" />
+        <KpiTile label="Calls Today" value={stats.callsToday || 0} color="#038CF1" />
+        <PlaceholderKpi label="Queue Waiting" sub="Zoom Queue API" />
+        <PlaceholderKpi label="Avg Wait Time" sub="Zoom Queue API" />
+      </div>
+
+      {/* Status bar */}
+      <StatusSummaryBar manualAgents={manualAgents} />
+
+      {/* Agent grid */}
+      {manualAgents.length === 0 ? (
+        <div style={{ padding: "40px 0", textAlign: "center" }}>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>No agents registered</div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(185px, 1fr))", gap: 8 }}>
+          {manualAgents.map(agent => <AgentCard key={agent.id} agent={agent} tick={tick} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Performance Tab Components ──────────────────────────────────────────────
+
+function HourlyChart({ hourlyVolume }) {
+  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+  const currentHour = now.getHours();
+  const max = Math.max(...hourlyVolume, 1);
+  const hours = [];
+  for (let h = 7; h <= 20; h++) hours.push(h);
+
+  return (
+    <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "12px 10px 6px" }}>
+      <div style={{ fontSize: 9, letterSpacing: 2, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", marginBottom: 10 }}>Calls by Hour (CT)</div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 80 }}>
+        {hours.map(h => {
+          const val = hourlyVolume[h] || 0;
+          const pct = (val / max) * 100;
+          const isCurrent = h === currentHour;
+          const isPast = h < currentHour;
+          return (
+            <div key={h} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+              {val > 0 && <span style={{ fontSize: 8, color: "rgba(255,255,255,0.5)", fontFamily: "'DM Mono', monospace" }}>{val}</span>}
+              <div style={{
+                width: "100%", minHeight: 3, height: `${Math.max(pct, 4)}%`,
+                background: isCurrent ? "#038CF1" : isPast ? "rgba(3,140,241,0.5)" : "rgba(255,255,255,0.1)",
+                borderRadius: 2, transition: "height 0.3s ease",
+              }} />
+              <span style={{ fontSize: 7, color: isCurrent ? "#038CF1" : "rgba(255,255,255,0.3)", fontFamily: "'DM Mono', monospace" }}>
+                {h > 12 ? h - 12 : h}{h >= 12 ? "p" : "a"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function InsightsPanel({ manualAgents, stats, hourlyVolume }) {
   const insights = useMemo(() => {
     const list = [];
-    const manualAgents = Object.values(agents).filter(a => !a.autoRegistered);
     const onCall = manualAgents.filter(a => a.status === "on_call").length;
     const available = manualAgents.filter(a => a.status === "available").length;
-    const total = manualAgents.length || 1;
+    const offline = manualAgents.filter(a => a.status === "offline").length;
+    const total = manualAgents.length - offline || 1;
     const utilization = Math.round((onCall / total) * 100);
 
-    if (utilization > 80) {
-      list.push({ type: "warning", text: `High utilization at ${utilization}% — most agents are on calls. Consider adjusting staffing.` });
-    } else if (available === 0 && onCall > 0) {
-      list.push({ type: "warning", text: "No agents available to take new calls right now." });
-    }
+    if (utilization > 80) list.push({ type: "warning", text: `High utilization at ${utilization}% — most agents are on calls.` });
+    else if (available === 0 && onCall > 0) list.push({ type: "warning", text: "No agents available to take new calls." });
 
-    if (stats.avgHandleTime > 600) {
-      list.push({ type: "warning", text: `Average handle time is ${fmtMins(stats.avgHandleTime)} — above 10min target. Check for long-running calls.` });
-    } else if (stats.avgHandleTime > 0 && stats.avgHandleTime <= 360) {
-      list.push({ type: "good", text: `Average handle time is ${fmtMins(stats.avgHandleTime)} — well within target.` });
-    }
+    if (stats.avgHandleTime > 600) list.push({ type: "warning", text: `AHT is ${fmtMins(stats.avgHandleTime)} — above 10min target.` });
+    else if (stats.avgHandleTime > 0 && stats.avgHandleTime <= 360) list.push({ type: "good", text: `AHT is ${fmtMins(stats.avgHandleTime)} — within target.` });
 
     const peakHour = hourlyVolume.indexOf(Math.max(...hourlyVolume));
     const peakVal = hourlyVolume[peakHour] || 0;
     if (peakVal > 0) {
       const label = peakHour > 12 ? `${peakHour - 12}pm` : peakHour === 12 ? "12pm" : `${peakHour}am`;
-      list.push({ type: "info", text: `Peak traffic hour: ${label} with ${peakVal} calls.` });
+      list.push({ type: "info", text: `Peak hour: ${label} with ${peakVal} calls.` });
     }
 
-    const totalCalls = stats.callsToday || 0;
-    if (totalCalls > 0) {
-      list.push({ type: "info", text: `${totalCalls} calls handled today across ${manualAgents.length} agents.` });
-    }
-
-    if (list.length === 0) {
-      list.push({ type: "info", text: "Dashboard is live. Insights will appear as call activity builds throughout the day." });
-    }
-
+    if ((stats.callsToday || 0) > 0) list.push({ type: "info", text: `${stats.callsToday} calls handled across ${manualAgents.length} agents.` });
+    if (list.length === 0) list.push({ type: "info", text: "Insights will appear as call activity builds." });
     return list.slice(0, 3);
-  }, [agents, stats, hourlyVolume]);
+  }, [manualAgents, stats, hourlyVolume]);
 
   const icons = { warning: "!", good: "+", info: "i" };
   const colors = { warning: "#FFB800", good: "#C1FD34", info: "#038CF1" };
@@ -287,16 +318,144 @@ function InsightsPanel({ agents, stats, hourlyVolume }) {
   );
 }
 
-function PlaceholderKpi({ label, sub }) {
+function AgentPerfRow({ agent }) {
+  const cfg = STATUS_CONFIG[agent.status] || STATUS_CONFIG.available;
+  const teamColor = TEAM_COLORS[agent.team] || "#666";
   return (
     <div style={{
-      flex: 1, minWidth: 120,
-      background: "rgba(255,255,255,0.03)", border: "1px dashed rgba(255,255,255,0.12)",
-      borderRadius: 12, padding: "12px 14px", opacity: 0.6,
+      display: "grid", gridTemplateColumns: "1.4fr 80px 60px 60px 60px",
+      gap: 8, alignItems: "center", padding: "7px 12px",
+      background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.05)",
+      fontSize: 11,
     }}>
-      <div style={{ fontSize: 9, letterSpacing: 2, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: "rgba(255,255,255,0.2)", fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>—</div>
-      <div style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", marginTop: 3 }}>{sub || "Coming soon"}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ width: 6, height: 6, borderRadius: "50%", background: cfg.dot }} />
+        <span style={{ fontWeight: 600, color: "#fff" }}>{agent.name}</span>
+        <span style={{ fontSize: 8, color: teamColor, fontWeight: 600 }}>{agent.team}</span>
+      </div>
+      <span style={{ fontSize: 9, fontWeight: 600, color: cfg.color, textTransform: "uppercase" }}>{cfg.label}</span>
+      <span style={{ fontFamily: "'DM Mono', monospace", color: "#038CF1", textAlign: "center" }}>{agent.callsToday || 0}</span>
+      <span style={{ fontFamily: "'DM Mono', monospace", color: "#00BEA8", textAlign: "center" }}>{agent.enrollmentsToday || 0}</span>
+      <span style={{ fontFamily: "'DM Mono', monospace", color: "#FFD700", textAlign: "center" }}>{agent.greatCallsToday || 0}</span>
+    </div>
+  );
+}
+
+function PerformanceTab({ manualAgents, stats, hourlyVolume }) {
+  const totalEnrollments = manualAgents.reduce((sum, a) => sum + (a.enrollmentsToday || 0), 0);
+  const totalGreatCalls = manualAgents.reduce((sum, a) => sum + (a.greatCallsToday || 0), 0);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+
+      {/* ── Today's Performance ─────────────────────────────── */}
+      <div>
+        <SectionHeader color="#FFB800" label="Today's Performance" />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10 }}>
+              <KpiTile label="Calls Handled" value={stats.callsToday || 0} color="#038CF1" />
+              <KpiTile
+                label="Avg Handle Time"
+                value={stats.avgHandleTime ? fmtMins(stats.avgHandleTime) : "—"}
+                color={stats.avgHandleTime ? thresholdColor(stats.avgHandleTime, 480, 600) : "rgba(255,255,255,0.3)"}
+                sub="Target: < 8 min"
+              />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <KpiTile label="Longest Call" value={stats.longestCall ? fmtMins(stats.longestCall) : "—"} color={stats.longestCall > 900 ? "#FF3B5C" : "#038CF1"} />
+              <KpiTile label="Enrollments" value={totalEnrollments} color="#00BEA8" sub={`${stats.applicationsToday || 0} applications`} />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <PlaceholderKpi label="Abandonment Rate" sub="Zoom Queue API" />
+              <PlaceholderKpi label="Avg Speed to Answer" sub="Zoom Queue API" />
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <HourlyChart hourlyVolume={hourlyVolume} />
+            <InsightsPanel manualAgents={manualAgents} stats={stats} hourlyVolume={hourlyVolume} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Quality & Outcomes ──────────────────────────────── */}
+      <div>
+        <SectionHeader color="#038CF1" label="Quality & Outcomes" />
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <KpiTile label="Great Calls" value={totalGreatCalls} color="#FFD700" sub="Flagged in Salesforce" />
+          <KpiTile
+            label="Great Call Rate"
+            value={stats.callsToday > 0 ? `${Math.round((totalGreatCalls / stats.callsToday) * 100)}%` : "—"}
+            color="#FFD700" sub="Great calls / total calls"
+          />
+          <PlaceholderKpi label="First Call Resolution" sub="Needs CRM integration" />
+          <PlaceholderKpi label="Transfers / Escalations" sub="Needs call routing data" />
+          <PlaceholderKpi label="Repeat Callers (7d)" sub="Needs call history" />
+        </div>
+        {/* Great Call Leaderboard */}
+        {totalGreatCalls > 0 && (
+          <div style={{ marginTop: 10, background: "rgba(255,215,0,0.06)", border: "1px solid rgba(255,215,0,0.20)", borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: "#FFD700", textTransform: "uppercase", marginBottom: 10 }}>Great Call Leaderboard</div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {manualAgents.filter(a => (a.greatCallsToday || 0) > 0).sort((a, b) => b.greatCallsToday - a.greatCallsToday).map(a => (
+                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,215,0,0.08)", borderRadius: 8, padding: "5px 10px" }}>
+                  <span style={{ fontSize: 11, color: "#fff", fontWeight: 600 }}>{a.name.split(" ")[0]} {a.name.split(" ")[1]?.[0]}.</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#FFD700", fontFamily: "'DM Mono', monospace" }}>{a.greatCallsToday}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Pipeline Impact ─────────────────────────────────── */}
+      <div>
+        <SectionHeader color="#A78BFA" label="Pipeline Impact" />
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <KpiTile label="Enrollments Today" value={totalEnrollments} color="#00BEA8" sub="From Salesforce" />
+          <KpiTile
+            label="Calls per Enrollment"
+            value={totalEnrollments > 0 ? ((stats.callsToday || 0) / totalEnrollments).toFixed(1) : "—"}
+            color="#038CF1"
+            sub={totalEnrollments > 0 ? `${stats.callsToday} calls / ${totalEnrollments} enrolled` : "No enrollments yet"}
+          />
+          <PlaceholderKpi label="Avg Time: Applied to First Call" sub="Needs Salesforce integration" />
+          <PlaceholderKpi label="Contact Rate" sub="% applicants reached" />
+          <PlaceholderKpi label="Conversion: Contacted vs Not" sub="Needs Salesforce pipeline" />
+        </div>
+        {totalEnrollments > 0 && (
+          <div style={{ marginTop: 10, background: "rgba(0,190,168,0.06)", border: "1px solid rgba(0,190,168,0.20)", borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: "#00BEA8", textTransform: "uppercase", marginBottom: 10 }}>Enrollment Leaderboard</div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {manualAgents.filter(a => (a.enrollmentsToday || 0) > 0).sort((a, b) => b.enrollmentsToday - a.enrollmentsToday).map(a => (
+                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(0,190,168,0.08)", borderRadius: 8, padding: "5px 10px" }}>
+                  <span style={{ fontSize: 11, color: "#fff", fontWeight: 600 }}>{a.name.split(" ")[0]} {a.name.split(" ")[1]?.[0]}.</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#00BEA8", fontFamily: "'DM Mono', monospace" }}>{a.enrollmentsToday}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Agent Performance Table ─────────────────────────── */}
+      <div>
+        <SectionHeader color="#6B5CE7" label="Agent Breakdown" />
+        <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 10, overflow: "hidden" }}>
+          <div style={{
+            display: "grid", gridTemplateColumns: "1.4fr 80px 60px 60px 60px",
+            gap: 8, padding: "8px 12px",
+            background: "rgba(255,255,255,0.06)", fontSize: 8, fontWeight: 700,
+            letterSpacing: 1.5, color: "rgba(255,255,255,0.4)", textTransform: "uppercase",
+          }}>
+            <span>Agent</span><span>Status</span>
+            <span style={{ textAlign: "center" }}>Calls</span>
+            <span style={{ textAlign: "center" }}>Enroll</span>
+            <span style={{ textAlign: "center" }}>Great</span>
+          </div>
+          {[...manualAgents].sort((a, b) => (b.callsToday || 0) - (a.callsToday || 0)).map(a => <AgentPerfRow key={a.id} agent={a} />)}
+        </div>
+      </div>
     </div>
   );
 }
@@ -309,7 +468,7 @@ export default function App() {
   const now = new Date();
 
   const [selectedLead, setSelectedLead] = useState("All");
-  const [viewMode, setViewMode] = useState("team"); // team | agent
+  const [activeTab, setActiveTab] = useState("live");
 
   const agents = data?.agents || {};
   const stats = data?.stats || {};
@@ -327,15 +486,7 @@ export default function App() {
   );
 
   const onCallCount = manualAgents.filter(a => a.status === "on_call").length;
-  const ringingCount = manualAgents.filter(a => a.status === "ringing").length;
   const availableCount = manualAgents.filter(a => a.status === "available").length;
-  const awayCount = manualAgents.filter(a => ["away", "dnd", "break", "meeting"].includes(a.status)).length;
-  const offlineCount = manualAgents.filter(a => a.status === "offline").length;
-  const totalActive = manualAgents.length - offlineCount;
-  const utilization = totalActive > 0 ? Math.round((onCallCount / totalActive) * 100) : 0;
-
-  const totalEnrollments = manualAgents.reduce((sum, a) => sum + (a.enrollmentsToday || 0), 0);
-  const totalGreatCalls = manualAgents.reduce((sum, a) => sum + (a.greatCallsToday || 0), 0);
 
   const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
   const dateStr = now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -359,12 +510,12 @@ export default function App() {
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
       `}</style>
 
-      <div style={{ padding: "12px 20px 20px", display: "flex", flexDirection: "column", gap: 16, maxWidth: 1440, margin: "0 auto" }}>
+      <div style={{ padding: "12px 20px 20px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 1440, margin: "0 auto" }}>
 
-        {/* ── Sticky Header ──────────────────────────────────────── */}
+        {/* ── Header ─────────────────────────────────────────── */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          position: "sticky", top: 0, zIndex: 100, padding: "8px 0",
+          position: "sticky", top: 0, zIndex: 100, padding: "8px 0 6px",
           background: "linear-gradient(160deg, #110045 0%, #0D1E6B 45%, #043C96 100%)",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -375,12 +526,11 @@ export default function App() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-            {/* Quick KPIs in header */}
+          <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
             {[
               { label: "On Call", val: onCallCount, color: "#FF8C00" },
               { label: "Available", val: availableCount, color: "#C1FD34" },
-              { label: "Calls Today", val: stats.callsToday || 0, color: "#038CF1" },
+              { label: "Calls", val: stats.callsToday || 0, color: "#038CF1" },
             ].map(({ label, val, color }) => (
               <div key={label} style={{ textAlign: "center" }}>
                 <div style={{ fontSize: 18, fontWeight: 700, color, fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>{val}</div>
@@ -399,228 +549,50 @@ export default function App() {
           </div>
         </div>
 
-        {/* ── Filters ────────────────────────────────────────────── */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 9, letterSpacing: 2, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", marginRight: 4 }}>Team</span>
+        {/* ── Tab Bar + Filters ───────────────────────────────── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* Main tabs */}
+          {[
+            { key: "live", label: "Live", color: "#FF8C00" },
+            { key: "performance", label: "Performance", color: "#038CF1" },
+          ].map(tab => (
+            <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
+              padding: "6px 18px", borderRadius: 8, border: "none", cursor: "pointer",
+              background: activeTab === tab.key ? `${tab.color}22` : "rgba(255,255,255,0.04)",
+              color: activeTab === tab.key ? tab.color : "rgba(255,255,255,0.4)",
+              fontSize: 12, fontWeight: activeTab === tab.key ? 700 : 500,
+              fontFamily: "'Poppins', sans-serif",
+              borderBottom: activeTab === tab.key ? `2px solid ${tab.color}` : "2px solid transparent",
+              transition: "all 0.2s ease",
+            }}>{tab.label}</button>
+          ))}
+
+          <div style={{ width: 1, height: 20, background: "rgba(255,255,255,0.10)", margin: "0 8px" }} />
+
+          {/* Team filters */}
+          <span style={{ fontSize: 9, letterSpacing: 2, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", marginRight: 2 }}>Team</span>
           {Object.keys(TEAM_LEADS).map(lead => (
             <button key={lead} onClick={() => setSelectedLead(lead)} style={{
-              padding: "4px 12px", borderRadius: 16, border: "none", cursor: "pointer",
-              background: selectedLead === lead ? "linear-gradient(135deg, #043C96, #038CF1)" : "rgba(255,255,255,0.06)",
-              color: selectedLead === lead ? "#fff" : "rgba(255,255,255,0.45)",
+              padding: "4px 10px", borderRadius: 14, border: "none", cursor: "pointer",
+              background: selectedLead === lead ? "linear-gradient(135deg, #043C96, #038CF1)" : "rgba(255,255,255,0.05)",
+              color: selectedLead === lead ? "#fff" : "rgba(255,255,255,0.4)",
               fontSize: 10, fontWeight: selectedLead === lead ? 700 : 400,
               fontFamily: "'Poppins', sans-serif", transition: "all 0.2s ease",
             }}>{lead}</button>
           ))}
-          <div style={{ flex: 1 }} />
-          <span style={{ fontSize: 9, letterSpacing: 2, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", marginRight: 4 }}>View</span>
-          {["team", "agent"].map(mode => (
-            <button key={mode} onClick={() => setViewMode(mode)} style={{
-              padding: "4px 12px", borderRadius: 16, border: "none", cursor: "pointer",
-              background: viewMode === mode ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
-              color: viewMode === mode ? "#fff" : "rgba(255,255,255,0.4)",
-              fontSize: 10, fontWeight: viewMode === mode ? 600 : 400,
-              fontFamily: "'Poppins', sans-serif", textTransform: "capitalize",
-            }}>{mode === "team" ? "Team View" : "Agent View"}</button>
-          ))}
         </div>
 
-        {/* ════════════════════════════════════════════════════════════════════
-            SECTION 1: REAL-TIME PULSE
-            ════════════════════════════════════════════════════════════════════ */}
-        <div>
-          <SectionHeader color="#FF3B5C" label="Real-Time Pulse" icon="" />
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <KpiTile label="On Call Now" value={onCallCount} color="#FF8C00" sub={`${ringingCount} ringing`} size="large" />
-            <KpiTile label="Available" value={availableCount} color="#C1FD34" sub={`of ${totalActive} active`} size="large" />
-            <KpiTile
-              label="Utilization"
-              value={`${utilization}%`}
-              color={thresholdColor(utilization, 60, 80)}
-              sub={`${onCallCount} of ${totalActive} on calls`}
-              size="large"
-            />
-            <KpiTile label="Away / DND" value={awayCount} color="#FF8C00" sub={`${offlineCount} offline`} />
-            <PlaceholderKpi label="Queue Waiting" sub="Needs Zoom Queue API" />
-            <PlaceholderKpi label="Avg Wait Time" sub="Needs Zoom Queue API" />
-          </div>
-        </div>
-
-        {/* Agent Cards / Table */}
-        {viewMode === "team" ? (
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(185px, 1fr))",
-            gap: 8,
-          }}>
-            {manualAgents.map(agent => <AgentCard key={agent.id} agent={agent} tick={tick} />)}
-          </div>
+        {/* ── Tab Content ─────────────────────────────────────── */}
+        {activeTab === "live" ? (
+          <LiveTab manualAgents={manualAgents} tick={tick} stats={stats} />
         ) : (
-          <div style={{
-            background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)",
-            borderRadius: 10, overflow: "hidden",
-          }}>
-            <div style={{
-              display: "grid", gridTemplateColumns: "1fr 90px 70px 55px 55px 55px",
-              gap: 8, padding: "8px 12px",
-              background: "rgba(255,255,255,0.06)", fontSize: 8, fontWeight: 700,
-              letterSpacing: 1.5, color: "rgba(255,255,255,0.4)", textTransform: "uppercase",
-            }}>
-              <span>Agent</span><span>Status</span><span>Duration</span>
-              <span style={{ textAlign: "center" }}>Calls</span>
-              <span style={{ textAlign: "center" }}>Enroll</span>
-              <span style={{ textAlign: "center" }}>Great</span>
-            </div>
-            {manualAgents.map(agent => <AgentRow key={agent.id} agent={agent} tick={tick} />)}
-          </div>
+          <PerformanceTab manualAgents={manualAgents} stats={stats} hourlyVolume={hourlyVolume} />
         )}
 
-        {/* ════════════════════════════════════════════════════════════════════
-            SECTION 2: TODAY'S PERFORMANCE
-            ════════════════════════════════════════════════════════════════════ */}
-        <div>
-          <SectionHeader color="#FFB800" label="Today's Performance" icon="" />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-
-            {/* Left: KPIs */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ display: "flex", gap: 10 }}>
-                <KpiTile label="Calls Handled" value={stats.callsToday || 0} color="#038CF1" />
-                <KpiTile
-                  label="Avg Handle Time"
-                  value={stats.avgHandleTime ? fmtMins(stats.avgHandleTime) : "—"}
-                  color={stats.avgHandleTime ? thresholdColor(stats.avgHandleTime, 480, 600) : "rgba(255,255,255,0.3)"}
-                  sub="Target: < 8 min"
-                />
-              </div>
-              <div style={{ display: "flex", gap: 10 }}>
-                <KpiTile
-                  label="Longest Call"
-                  value={stats.longestCall ? fmtMins(stats.longestCall) : "—"}
-                  color={stats.longestCall > 900 ? "#FF3B5C" : "#038CF1"}
-                />
-                <KpiTile label="Enrollments" value={totalEnrollments} color="#00BEA8" sub={`${stats.applicationsToday || 0} applications`} />
-              </div>
-              <div style={{ display: "flex", gap: 10 }}>
-                <PlaceholderKpi label="Abandonment Rate" sub="Needs Zoom Queue API" />
-                <PlaceholderKpi label="Avg Speed to Answer" sub="Needs Zoom Queue API" />
-              </div>
-            </div>
-
-            {/* Right: Hourly chart + insights */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <HourlyChart hourlyVolume={hourlyVolume} />
-              <InsightsPanel agents={agents} stats={stats} hourlyVolume={hourlyVolume} />
-            </div>
-          </div>
+        {/* ── Footer ──────────────────────────────────────────── */}
+        <div style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", textAlign: "center", padding: "4px 0" }}>
+          iTeach Support Center  —  {manualAgents.length} agents  —  Refreshes every 60s
         </div>
-
-        {/* ════════════════════════════════════════════════════════════════════
-            SECTION 3: QUALITY & OUTCOMES
-            ════════════════════════════════════════════════════════════════════ */}
-        <div>
-          <SectionHeader color="#038CF1" label="Quality & Outcomes" icon="" />
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <KpiTile
-              label="Great Calls"
-              value={totalGreatCalls}
-              color="#FFD700"
-              sub="Flagged in Salesforce"
-            />
-            <KpiTile
-              label="Great Call Rate"
-              value={stats.callsToday > 0 ? `${Math.round((totalGreatCalls / stats.callsToday) * 100)}%` : "—"}
-              color="#FFD700"
-              sub="Great calls / total calls"
-            />
-            <PlaceholderKpi label="First Call Resolution" sub="Needs CRM integration" />
-            <PlaceholderKpi label="Transfers / Escalations" sub="Needs call routing data" />
-            <PlaceholderKpi label="Repeat Callers (7d)" sub="Needs call history data" />
-          </div>
-
-          {/* Great Call Scoreboard */}
-          {totalGreatCalls > 0 && (
-            <div style={{
-              marginTop: 10, background: "rgba(255,215,0,0.06)", border: "1px solid rgba(255,215,0,0.20)",
-              borderRadius: 10, padding: "12px 14px",
-            }}>
-              <div style={{ fontSize: 9, letterSpacing: 2, color: "#FFD700", textTransform: "uppercase", marginBottom: 10 }}>Great Call Leaderboard</div>
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                {manualAgents
-                  .filter(a => (a.greatCallsToday || 0) > 0)
-                  .sort((a, b) => (b.greatCallsToday || 0) - (a.greatCallsToday || 0))
-                  .map(a => (
-                    <div key={a.id} style={{
-                      display: "flex", alignItems: "center", gap: 6,
-                      background: "rgba(255,215,0,0.08)", borderRadius: 8, padding: "5px 10px",
-                    }}>
-                      <span style={{ fontSize: 11, color: "#fff", fontWeight: 600 }}>
-                        {a.name.split(" ")[0]} {a.name.split(" ")[1]?.[0]}.
-                      </span>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: "#FFD700", fontFamily: "'DM Mono', monospace" }}>{a.greatCallsToday}</span>
-                    </div>
-                  ))
-                }
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ════════════════════════════════════════════════════════════════════
-            SECTION 4: PIPELINE IMPACT
-            ════════════════════════════════════════════════════════════════════ */}
-        <div>
-          <SectionHeader color="#A78BFA" label="Pipeline Impact" icon="" />
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <KpiTile
-              label="Enrollments Today"
-              value={totalEnrollments}
-              color="#00BEA8"
-              sub="From Salesforce"
-            />
-            <KpiTile
-              label="Calls per Enrollment"
-              value={totalEnrollments > 0 ? (stats.callsToday / totalEnrollments).toFixed(1) : "—"}
-              color="#038CF1"
-              sub={totalEnrollments > 0 ? `${stats.callsToday} calls / ${totalEnrollments} enrolled` : "No enrollments yet"}
-            />
-            <PlaceholderKpi label="Avg Time: Applied to First Call" sub="Needs Salesforce integration" />
-            <PlaceholderKpi label="Contact Rate" sub="% applicants reached" />
-            <PlaceholderKpi label="Conversion: Contacted vs Not" sub="Needs Salesforce pipeline data" />
-          </div>
-
-          {/* Enrollments by agent */}
-          {totalEnrollments > 0 && (
-            <div style={{
-              marginTop: 10, background: "rgba(0,190,168,0.06)", border: "1px solid rgba(0,190,168,0.20)",
-              borderRadius: 10, padding: "12px 14px",
-            }}>
-              <div style={{ fontSize: 9, letterSpacing: 2, color: "#00BEA8", textTransform: "uppercase", marginBottom: 10 }}>Enrollment Leaderboard</div>
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                {manualAgents
-                  .filter(a => (a.enrollmentsToday || 0) > 0)
-                  .sort((a, b) => (b.enrollmentsToday || 0) - (a.enrollmentsToday || 0))
-                  .map(a => (
-                    <div key={a.id} style={{
-                      display: "flex", alignItems: "center", gap: 6,
-                      background: "rgba(0,190,168,0.08)", borderRadius: 8, padding: "5px 10px",
-                    }}>
-                      <span style={{ fontSize: 11, color: "#fff", fontWeight: 600 }}>
-                        {a.name.split(" ")[0]} {a.name.split(" ")[1]?.[0]}.
-                      </span>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: "#00BEA8", fontFamily: "'DM Mono', monospace" }}>{a.enrollmentsToday}</span>
-                    </div>
-                  ))
-                }
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ── Footer ─────────────────────────────────────────────── */}
-        <div style={{ fontSize: 8, color: "rgba(255,255,255,0.15)", textAlign: "center", padding: "8px 0" }}>
-          iTeach Support Center Command  —  {manualAgents.length} agents  —  Data refreshes every 60s
-        </div>
-
       </div>
     </>
   );
