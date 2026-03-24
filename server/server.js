@@ -437,11 +437,12 @@ async function pollPresence() {
     "Busy":                "dnd",
     "Mobile_signed_in":    "away",
     "In_A_Calendar_Event": "away",
+    "In_A_Meeting":        "meeting",
     "Presenting":          "dnd",
   };
 
   const agentIds = Object.keys(state.agents);
-  let updated = 0, errors = 0;
+  let updated = 0, errors = 0, undefinedCount = 0;
   for (const key of agentIds) {
     const agent = state.agents[key];
     try {
@@ -457,13 +458,17 @@ async function pollPresence() {
         continue;
       }
       const data = await res.json();
-      if (!presenceMap[data.presence_status] && updated === 0 && errors === 0) {
-        console.log(`[Presence] Sample API response for ${agent.name}:`, JSON.stringify(data));
-      }
       const rawStatus = data.presence_status || data.status || data.presence;
+      if (!rawStatus) {
+        undefinedCount++;
+        if (undefinedCount <= 2) {
+          console.log(`[Presence] No status found for ${agent.name} — full response:`, JSON.stringify(data));
+        }
+        continue;
+      }
       const mapped = presenceMap[rawStatus] || "offline";
       if (!presenceMap[rawStatus]) {
-        console.log(`[Presence] Unknown status for ${agent.name}: "${rawStatus}" (raw field: presence_status="${data.presence_status}", status="${data.status}") — defaulting to offline`);
+        console.log(`[Presence] Unmapped status for ${agent.name}: "${rawStatus}" — defaulting to offline`);
       }
       if (state.agents[key].status !== mapped) {
         const prev = state.agents[key].status;
@@ -489,7 +494,7 @@ async function pollPresence() {
     }
     await new Promise(r => setTimeout(r, 250));
   }
-  console.log(`[Presence] Poll complete: ${agentIds.length} agents, ${updated} updated, ${errors} errors`);
+  console.log(`[Presence] Poll complete: ${agentIds.length} agents, ${updated} updated, ${errors} errors, ${undefinedCount} undefined`);
 
   saveState();
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
