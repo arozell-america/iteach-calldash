@@ -49,6 +49,8 @@ const state = {
   },
   callLog: [],
   stats: { callsToday: 0, applicationsToday: 0, avgSpeedToCall: null },
+  hourlyVolume: new Array(24).fill(0),
+  callDurations: [],
 };
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
@@ -107,8 +109,36 @@ wss.on('connection', (ws) => {
   ws.on('close', () => console.log('Dashboard client disconnected'));
 });
 
+function getCurrentHourCT() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })).getHours();
+}
+
+function recordCallEnd(agentKey) {
+  const agent = state.agents[agentKey];
+  if (!agent) return;
+  agent.callsToday = (agent.callsToday || 0) + 1;
+  state.stats.callsToday++;
+  state.hourlyVolume[getCurrentHourCT()]++;
+  if (agent.callStartTime) {
+    const duration = Math.round((Date.now() - agent.callStartTime) / 1000);
+    if (duration > 0 && duration < 7200) state.callDurations.push(duration);
+  }
+  agent.status = 'available';
+  agent.callStartTime = null;
+  agent.callerId = null;
+  agent.callDirection = null;
+}
+
 function getPublicState() {
-  return { agents: state.agents, queues: state.queues, stats: state.stats, timestamp: Date.now() };
+  const durations = state.callDurations;
+  const avgHandleTime = durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
+  const longestCall = durations.length > 0 ? Math.max(...durations) : 0;
+  return {
+    agents: state.agents, queues: state.queues,
+    stats: { ...state.stats, avgHandleTime, longestCall, totalCallsHandled: durations.length },
+    hourlyVolume: state.hourlyVolume,
+    timestamp: Date.now(),
+  };
 }
 
 // ─── Agent Lookup (case-insensitive — Zoom sends IDs lowercase) ───────────────
@@ -219,13 +249,8 @@ function handleZoomEvent(event, payload) {
     const key = findAgentKey(userId);
     console.log('[caller_ended] key:', key);
     if (key) {
-      state.agents[key].status = 'available';
       console.log('[caller_ended] SET available:', state.agents[key].name);
-      state.agents[key].callStartTime = null;
-      state.agents[key].callerId = null;
-      state.agents[key].callDirection = null;
-      state.agents[key].callsToday = (state.agents[key].callsToday || 0) + 1;
-      state.stats.callsToday++;
+      recordCallEnd(key);
     }
   }
 
@@ -259,13 +284,8 @@ function handleZoomEvent(event, payload) {
     const key = findAgentKey(userId);
     console.log('[caller_ended] key:', key);
     if (key) {
-      state.agents[key].status = 'available';
       console.log('[caller_ended] SET available:', state.agents[key].name);
-      state.agents[key].callStartTime = null;
-      state.agents[key].callerId = null;
-      state.agents[key].callDirection = null;
-      state.agents[key].callsToday = (state.agents[key].callsToday || 0) + 1;
-      state.stats.callsToday++;
+      recordCallEnd(key);
     }
   }
 
@@ -294,12 +314,10 @@ function handleZoomEvent(event, payload) {
           state.agents[key].callStartTime = state.agents[key].callStartTime || Date.now();
           state.agents[key].callDirection = state.agents[key].callDirection || 'inbound';
         }
-        // Clear callStartTime when leaving on_call via presence
+        // Call ended via presence transition
         if (mapped !== 'on_call' && prev === 'on_call') {
-          state.agents[key].callStartTime = null;
-          state.agents[key].callDirection = null;
-          state.agents[key].callsToday = (state.agents[key].callsToday || 0) + 1;
-          state.stats.callsToday++;
+          recordCallEnd(key);
+          state.agents[key].status = mapped; // recordCallEnd sets available, override with actual presence
         }
       }
     }
@@ -377,6 +395,8 @@ app.post('/api/reset-daily', (req, res) => {
   Object.values(state.queues).forEach(q => { q.callsHandled = 0; q.waiting = 0; });
   state.stats.callsToday = 0;
   state.stats.applicationsToday = 0;
+  state.hourlyVolume = new Array(24).fill(0);
+  state.callDurations = [];
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
   saveState();
   res.json({ ok: true });
@@ -469,10 +489,8 @@ async function pollPresence() {
         }
         // Transitioning OUT OF on_call — call ended
         if (mapped !== 'on_call' && prev === 'on_call') {
-          state.agents[key].callStartTime = null;
-          state.agents[key].callDirection = null;
-          state.agents[key].callsToday = (state.agents[key].callsToday || 0) + 1;
-          state.stats.callsToday++;
+          recordCallEnd(key);
+          state.agents[key].status = mapped; // override with actual presence
         }
       }
     } catch (e) { errors++; }
@@ -596,6 +614,8 @@ function scheduleMidnightReset() {
     });
     state.stats.callsToday = 0;
     state.stats.greatCallsToday = 0;
+    state.hourlyVolume = new Array(24).fill(0);
+    state.callDurations = [];
     saveState();
     broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
     console.log('[Reset] Daily reset complete');
