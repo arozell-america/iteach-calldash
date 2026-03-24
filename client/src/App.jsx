@@ -301,7 +301,7 @@ export default function App() {
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ background: "linear-gradient(135deg, #043C96 0%, #038CF1 60%, #00BEA8 100%)", borderRadius: 8, padding: "5px 12px", fontWeight: 800, fontSize: 15, letterSpacing: 1 }}>iTeach</div>
+            <img src="/iteach-logo.png" alt="iTeach" style={{ height: 36 }} />
             <div>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" }}>Call Floor Command</div>
               <div style={{ fontSize: 9, letterSpacing: 3, color: "rgba(255,255,255,0.4)", textTransform: "uppercase" }}>Live Operations Dashboard</div>
