@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:3001";
 
 const STATUS_CONFIG = {
-  on_call:   { label: "On Call",   color: "#FF3B5C", bg: "rgba(255,59,92,0.22)",   dot: "#FF3B5C", pulse: true  },
+  on_call:   { label: "On Call",   color: "#FF8C00", bg: "rgba(255,140,0,0.22)",   dot: "#FF8C00", pulse: true  },
   ringing:   { label: "Ringing",  color: "#FFB800", bg: "rgba(255,184,0,0.22)",   dot: "#FFB800", pulse: true  },
   available: { label: "At Desk",color: "#C1FD34", bg: "rgba(193,253,52,0.10)",  dot: "#C1FD34", pulse: false },
   away:      { label: "Away",     color: "#FF8C00", bg: "rgba(255,140,0,0.12)",   dot: "#FF8C00", pulse: false },
@@ -121,7 +121,7 @@ function AgentCard({ agent }) {
   // Duration alert: amber >8min, red >15min
   const isLong = elapsedSecs > 8 * 60;
   const isCritical = elapsedSecs > 15 * 60;
-  const alertColor = isCritical ? "#FF3B5C" : isLong ? "#FF8C00" : null;
+  const alertColor = isCritical ? "#DC2626" : isLong ? "#FF3B5C" : null;
 
   // Inbound/outbound indicator
   const direction = agent.callDirection;
@@ -371,7 +371,7 @@ export default function App() {
               const isActive = agent.status === "on_call" || agent.status === "ringing";
               const isLong = elapsedSecs > 8 * 60;
               const isCritical = elapsedSecs > 15 * 60;
-              const alertColor = isCritical ? "#FF3B5C" : isLong ? "#FF8C00" : null;
+              const alertColor = isCritical ? "#DC2626" : isLong ? "#FF3B5C" : null;
               const nameParts = (agent.name || "").trim().split(" ");
               const firstName = nameParts[0] || "";
               const lastName = nameParts.slice(1).join(" ") || "";
