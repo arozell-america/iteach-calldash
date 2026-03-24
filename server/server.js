@@ -342,11 +342,27 @@ app.get('/api/debug-queues', async (req, res) => {
   try {
     const token = await getZoomToken();
     if (!token) return res.json({ error: 'No Zoom token' });
-    const r = await fetch('https://api.zoom.us/v2/phone/call_queues', {
-      headers: { Authorization: 'Bearer ' + token }
-    });
-    const data = await r.json();
-    res.json(data);
+    // Fetch all pages of call queues
+    let allQueues = [];
+    let nextPageToken = '';
+    do {
+      const url = 'https://api.zoom.us/v2/phone/call_queues?page_size=100' + (nextPageToken ? `&next_page_token=${nextPageToken}` : '');
+      const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+      const data = await r.json();
+      allQueues = allQueues.concat(data.call_queues || []);
+      nextPageToken = data.next_page_token || '';
+    } while (nextPageToken);
+    // For each active queue, fetch detailed metrics
+    const active = allQueues.filter(q => q.status === 'active');
+    const details = [];
+    for (const q of active) {
+      try {
+        const r2 = await fetch(`https://api.zoom.us/v2/phone/call_queues/${q.id}`, { headers: { Authorization: 'Bearer ' + token } });
+        const d = await r2.json();
+        details.push({ name: q.name, id: q.id, detail: d });
+      } catch(e) { details.push({ name: q.name, id: q.id, error: e.message }); }
+    }
+    res.json({ total: allQueues.length, active: active.length, activeQueues: active, details });
   } catch(e) { res.json({ error: e.message }); }
 });
 
