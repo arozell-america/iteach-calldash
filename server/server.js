@@ -277,9 +277,9 @@ function handleZoomEvent(event, payload) {
     const presenceMap = {
       'Available': 'available', 'Away': 'away',
       'Do_Not_Disturb': 'dnd', 'In_A_Zoom_Meeting': 'meeting',
-      'On_Phone_Call': 'on_call', 'Offline': 'offline',
+      'On_Phone_Call': 'on_call', 'In_A_Call': 'on_call', 'Offline': 'offline',
       'Mobile_signed_in': 'away', 'Busy': 'dnd',
-      'In_A_Calendar_Event': 'away', 'Presenting': 'dnd',
+      'In_A_Calendar_Event': 'away', 'In_A_Meeting': 'meeting', 'Presenting': 'dnd',
     };
     if (key) {
       const mapped = presenceMap[payload?.presence_status || payload?.object?.presence_status] || 'available';
@@ -438,6 +438,7 @@ async function pollPresence() {
     "Mobile_signed_in":    "away",
     "In_A_Calendar_Event": "away",
     "In_A_Meeting":        "meeting",
+    "In_A_Call":           "on_call",
     "Presenting":          "dnd",
   };
 
