@@ -338,6 +338,18 @@ function handleZoomEvent(event, payload) {
 
 app.get('/api/state', (req, res) => res.json(getPublicState()));
 
+app.get('/api/debug-queues', async (req, res) => {
+  try {
+    const token = await getZoomToken();
+    if (!token) return res.json({ error: 'No Zoom token' });
+    const r = await fetch('https://api.zoom.us/v2/phone/call_queues', {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    const data = await r.json();
+    res.json(data);
+  } catch(e) { res.json({ error: e.message }); }
+});
+
 app.get('/api/debug-sf', async (req, res) => {
   try {
     if (!sfAccessToken) await getSfAccessToken();
