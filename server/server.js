@@ -417,9 +417,15 @@ async function getZoomToken() {
 }
 
 async function pollPresence() {
-  if (!ZOOM_ACCOUNT_ID || !ZOOM_CLIENT_ID || !ZOOM_CLIENT_SECRET) return;
+  if (!ZOOM_ACCOUNT_ID || !ZOOM_CLIENT_ID || !ZOOM_CLIENT_SECRET) {
+    console.log('[Presence] Skipping — missing Zoom OAuth credentials');
+    return;
+  }
   const token = await getZoomToken();
-  if (!token) return;
+  if (!token) {
+    console.log('[Presence] Skipping — failed to get Zoom token');
+    return;
+  }
 
   const presenceMap = {
     "Available":           "available",
@@ -435,19 +441,31 @@ async function pollPresence() {
   };
 
   const agentIds = Object.keys(state.agents);
+  let updated = 0, errors = 0;
   for (const key of agentIds) {
     const agent = state.agents[key];
     try {
       const res = await fetch("https://api.zoom.us/v2/users/" + key + "/presence_status", {
         headers: { Authorization: "Bearer " + token }
       });
-      if (!res.ok) continue;
+      if (!res.ok) {
+        errors++;
+        if (errors <= 3) {
+          const body = await res.text();
+          console.log(`[Presence] API error for ${agent.name} (${key}): ${res.status} ${res.statusText} — ${body}`);
+        }
+        continue;
+      }
       const data = await res.json();
       const mapped = presenceMap[data.presence_status] || "offline";
+      if (!presenceMap[data.presence_status]) {
+        console.log(`[Presence] Unknown status for ${agent.name}: "${data.presence_status}" — defaulting to offline`);
+      }
       if (state.agents[key].status !== mapped) {
         const prev = state.agents[key].status;
         console.log("[Presence poll]", agent.name + ":", prev, "->", mapped);
         state.agents[key].status = mapped;
+        updated++;
         // Transitioning INTO on_call
         if (mapped === 'on_call' && prev !== 'on_call') {
           state.agents[key].callStartTime = state.agents[key].callStartTime || Date.now();
@@ -461,9 +479,13 @@ async function pollPresence() {
           state.stats.callsToday++;
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      errors++;
+      if (errors <= 3) console.log(`[Presence] Fetch error for ${agent.name}: ${e.message}`);
+    }
     await new Promise(r => setTimeout(r, 250));
   }
+  console.log(`[Presence] Poll complete: ${agentIds.length} agents, ${updated} updated, ${errors} errors`);
 
   saveState();
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
