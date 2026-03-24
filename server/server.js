@@ -457,9 +457,13 @@ async function pollPresence() {
         continue;
       }
       const data = await res.json();
-      const mapped = presenceMap[data.presence_status] || "offline";
-      if (!presenceMap[data.presence_status]) {
-        console.log(`[Presence] Unknown status for ${agent.name}: "${data.presence_status}" — defaulting to offline`);
+      if (!presenceMap[data.presence_status] && updated === 0 && errors === 0) {
+        console.log(`[Presence] Sample API response for ${agent.name}:`, JSON.stringify(data));
+      }
+      const rawStatus = data.presence_status || data.status || data.presence;
+      const mapped = presenceMap[rawStatus] || "offline";
+      if (!presenceMap[rawStatus]) {
+        console.log(`[Presence] Unknown status for ${agent.name}: "${rawStatus}" (raw field: presence_status="${data.presence_status}", status="${data.status}") — defaulting to offline`);
       }
       if (state.agents[key].status !== mapped) {
         const prev = state.agents[key].status;
