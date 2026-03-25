@@ -28,7 +28,7 @@ const wss = new WebSocketServer({ server });
 // CORS - allow requests from any origin (including local file:// admin page)
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
@@ -399,6 +399,24 @@ app.post('/api/agents', async (req, res) => {
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
   saveState();
   res.json(state.agents[id]);
+});
+
+app.patch('/api/agents/:id', async (req, res) => {
+  const key = findAgentKey(req.params.id);
+  if (!key) return res.status(404).json({ error: 'Agent not found' });
+  const { name, team, extension, email } = req.body;
+  const agent = state.agents[key];
+  if (name !== undefined) agent.name = name;
+  if (team !== undefined) agent.team = team;
+  if (extension !== undefined) agent.extension = extension;
+  if (email !== undefined) agent.email = email;
+  try {
+    await dynamo.send(new PutItemCommand({ TableName: AGENTS_TABLE, Item: marshall({ id: agent.id, name: agent.name, team: agent.team || '', extension: agent.extension || '', email: agent.email || '' }) }));
+    console.log('[DynamoDB] Updated agent:', agent.name);
+  } catch(e) { console.error('[DynamoDB] Update agent error:', e.message); }
+  broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+  saveState();
+  res.json(agent);
 });
 
 app.delete('/api/agents/:id', async (req, res) => {
