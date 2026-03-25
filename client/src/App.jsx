@@ -126,7 +126,7 @@ function AgentCard({ agent, tick }) {
   const elapsedSecs = agent.callStartTime ? (tick - agent.callStartTime) / 1000 : 0;
   const elapsed = elapsedSecs > 0 ? fmt(elapsedSecs) : null;
   const teamColor = TEAM_COLORS[agent.team] || "#666";
-  const isActive = agent.status === "on_call" || agent.status === "ringing";
+  const isActive = agent.status === "on_call" || agent.status === "ringing" || agent.status === "meeting";
   const nameParts = (agent.name || "").trim().split(" ");
   const firstName = nameParts[0] || "";
   const lastName = nameParts.slice(1).join(" ") || "";
