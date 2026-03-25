@@ -491,7 +491,7 @@ export default function App() {
     Object.values(agents)
       .filter(a => !a.autoRegistered && leadTeams.includes(a.team))
       .sort((a, b) => {
-        const order = { on_call: 0, ringing: 1, available: 2, away: 3, meeting: 3, break: 4, dnd: 4, offline: 5 };
+        const order = { on_call: 0, ringing: 1, meeting: 2, available: 3, away: 4, break: 5, dnd: 5, offline: 6 };
         return (order[a.status] ?? 6) - (order[b.status] ?? 6);
       }),
     [agents, leadTeams]
