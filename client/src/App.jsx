@@ -12,7 +12,7 @@ const STATUS_CONFIG = {
   break:     { label: "Break",      color: "#7B8FA6", bg: "rgba(123,143,166,0.10)", dot: "#7B8FA6", pulse: false },
   dnd:       { label: "DND",        color: "#FF3B5C", bg: "rgba(255,59,92,0.10)",   dot: "#FF3B5C", pulse: false },
   offline:   { label: "Offline",    color: "#4A5568", bg: "rgba(74,85,104,0.08)",   dot: "#4A5568", pulse: false },
-  meeting:   { label: "In Meeting", color: "#A78BFA", bg: "rgba(167,139,250,0.12)", dot: "#A78BFA", pulse: true  },
+  meeting:   { label: "In Meeting", color: "#A78BFA", bg: "rgba(167,139,250,0.25)", dot: "#A78BFA", pulse: true  },
 };
 
 const TEAM_COLORS = {
