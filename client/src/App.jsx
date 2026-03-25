@@ -138,26 +138,37 @@ function AgentCard({ agent, tick }) {
   const direction = agent.callDirection;
   const dirLabel = direction === "inbound" ? "IN" : direction === "outbound" ? "OUT" : null;
 
+  const dirColor = direction === "inbound" ? "#00BEA8" : "#038CF1";
+
   return (
     <div style={{
-      padding: "10px 10px 8px", borderRadius: 8,
+      padding: "12px 12px 10px", borderRadius: 10,
       background: alertColor ? (isCritical ? "rgba(220,38,38,0.15)" : "rgba(255,59,92,0.12)") : isActive ? cfg.bg : "rgba(255,255,255,0.05)",
       border: `1px solid ${alertColor ? alertColor + "66" : isActive ? cfg.color + "44" : "rgba(255,255,255,0.10)"}`,
-      display: "flex", flexDirection: "column", gap: 3,
+      boxShadow: isActive ? `0 0 12px ${alertColor || cfg.color}22` : "none",
+      display: "flex", flexDirection: "column", gap: 5,
       transition: "all 0.3s ease", position: "relative",
+      minHeight: 82,
     }}>
-      <div style={{ position: "absolute", top: 8, left: 8, width: 6, height: 6, borderRadius: "50%", background: alertColor || cfg.dot }} />
-      <div style={{ position: "absolute", top: 6, right: 8, fontSize: 8, color: teamColor, fontWeight: 700 }}>{agent.team}</div>
-      <div style={{ paddingLeft: 14, paddingRight: 55 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{firstName}</div>
-        {lastName && <div style={{ fontSize: 10, fontWeight: 400, color: "rgba(255,255,255,0.45)", lineHeight: 1.1 }}>{lastName}</div>}
+      <div style={{ position: "absolute", top: 10, left: 10, width: 7, height: 7, borderRadius: "50%", background: alertColor || cfg.dot, boxShadow: isActive ? `0 0 6px ${alertColor || cfg.dot}` : "none" }} />
+      <div style={{ position: "absolute", top: 8, right: 10, fontSize: 9, color: teamColor, fontWeight: 700, letterSpacing: 0.3 }}>{agent.team}</div>
+      <div style={{ paddingLeft: 16, paddingRight: 60 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{firstName}</div>
+        {lastName && <div style={{ fontSize: 11, fontWeight: 400, color: "rgba(255,255,255,0.5)", lineHeight: 1.2 }}>{lastName}</div>}
       </div>
-      <div style={{ paddingLeft: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, color: alertColor || cfg.color, textTransform: "uppercase", letterSpacing: 0.5 }}>{cfg.label}</span>
-          {dirLabel && <span style={{ fontSize: 7, fontWeight: 700, color: direction === "inbound" ? "#00BEA8" : "#038CF1", background: direction === "inbound" ? "rgba(0,190,168,0.15)" : "rgba(3,140,241,0.15)", borderRadius: 3, padding: "1px 4px" }}>{dirLabel}</span>}
+      <div style={{ paddingLeft: 16, display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: alertColor || cfg.color, textTransform: "uppercase", letterSpacing: 0.6 }}>{cfg.label}</span>
+          {direction && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 8, fontWeight: 700, color: dirColor, background: dirColor + "20", borderRadius: 4, padding: "2px 6px" }}>
+              <svg width="8" height="8" viewBox="0 0 8 8" style={{ transform: direction === "inbound" ? "rotate(135deg)" : "rotate(-45deg)" }}>
+                <path d="M1 4L4 1L7 4M4 1V7" stroke={dirColor} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              {direction === "inbound" ? "IN" : "OUT"}
+            </span>
+          )}
         </div>
-        {elapsed && <span style={{ fontSize: 11, fontWeight: 700, color: alertColor || cfg.color, fontFamily: "'DM Mono', monospace" }}>{elapsed}</span>}
+        {elapsed && <span style={{ fontSize: 13, fontWeight: 700, color: alertColor || cfg.color, fontFamily: "'DM Mono', monospace" }}>{elapsed}</span>}
       </div>
     </div>
   );
@@ -223,7 +234,7 @@ function LiveTab({ manualAgents, tick, stats, zoomQueues }) {
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>No agents registered</div>
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(185px, 1fr))", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 10 }}>
           {manualAgents.map(agent => <AgentCard key={agent.id} agent={agent} tick={tick} />)}
         </div>
       )}
@@ -363,7 +374,7 @@ function PerformanceTab({ manualAgents, stats, hourlyVolume }) {
               />
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <KpiTile label="Longest Call" value={stats.longestCall ? fmtMins(stats.longestCall) : "—"} color={stats.longestCall > 900 ? "#FF3B5C" : "#038CF1"} />
+              <KpiTile label="Longest Call" value={stats.longestCall ? fmtMins(stats.longestCall) : "—"} color={stats.longestCall > 900 ? "#FF3B5C" : "#038CF1"} sub={stats.longestCallAgent || ""} />
               <KpiTile label="Enrollments" value={totalEnrollments} color="#00BEA8" sub={`${stats.applicationsToday || 0} applications`} />
             </div>
             <div style={{ display: "flex", gap: 10 }}>

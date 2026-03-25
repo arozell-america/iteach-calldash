@@ -51,6 +51,7 @@ const state = {
   stats: { callsToday: 0, applicationsToday: 0, avgSpeedToCall: null },
   hourlyVolume: new Array(24).fill(0),
   callDurations: [],
+  longestCallAgent: null,
   zoomQueues: { totalWaiting: 0, avgWaitTime: 0, queues: [] },
 };
 
@@ -122,7 +123,12 @@ function recordCallEnd(agentKey) {
   state.hourlyVolume[getCurrentHourCT()]++;
   if (agent.callStartTime) {
     const duration = Math.round((Date.now() - agent.callStartTime) / 1000);
-    if (duration > 0 && duration < 7200) state.callDurations.push(duration);
+    if (duration > 0 && duration < 7200) {
+      state.callDurations.push(duration);
+      if (!state.longestCallAgent || duration > state.longestCallAgent.duration) {
+        state.longestCallAgent = { name: agent.name, duration };
+      }
+    }
   }
   agent.status = 'available';
   agent.callStartTime = null;
@@ -136,7 +142,7 @@ function getPublicState() {
   const longestCall = durations.length > 0 ? Math.max(...durations) : 0;
   return {
     agents: state.agents, queues: state.queues,
-    stats: { ...state.stats, avgHandleTime, longestCall, totalCallsHandled: durations.length },
+    stats: { ...state.stats, avgHandleTime, longestCall, longestCallAgent: state.longestCallAgent?.name || null, totalCallsHandled: durations.length },
     hourlyVolume: state.hourlyVolume,
     zoomQueues: state.zoomQueues,
     timestamp: Date.now(),
@@ -427,6 +433,7 @@ app.post('/api/reset-daily', (req, res) => {
   state.stats.applicationsToday = 0;
   state.hourlyVolume = new Array(24).fill(0);
   state.callDurations = [];
+  state.longestCallAgent = null;
   broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
   saveState();
   res.json({ ok: true });
@@ -692,6 +699,7 @@ function scheduleMidnightReset() {
     state.stats.greatCallsToday = 0;
     state.hourlyVolume = new Array(24).fill(0);
     state.callDurations = [];
+  state.longestCallAgent = null;
     saveState();
     broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
     console.log('[Reset] Daily reset complete');
