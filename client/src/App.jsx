@@ -254,17 +254,17 @@ function HourlyChart({ hourlyVolume }) {
   return (
     <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "12px 10px 6px" }}>
       <div style={{ fontSize: 9, letterSpacing: 2, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", marginBottom: 10 }}>Calls by Hour (CT)</div>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 80 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 120 }}>
         {hours.map(h => {
           const val = hourlyVolume[h] || 0;
-          const pct = (val / max) * 100;
+          const barHeight = max > 0 ? Math.max((val / max) * 100, val > 0 ? 6 : 2) : 2;
           const isCurrent = h === currentHour;
           const isPast = h < currentHour;
           return (
-            <div key={h} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+            <div key={h} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, height: "100%", justifyContent: "flex-end" }}>
               {val > 0 && <span style={{ fontSize: 8, color: "rgba(255,255,255,0.5)", fontFamily: "'DM Mono', monospace" }}>{val}</span>}
               <div style={{
-                width: "100%", minHeight: 3, height: `${Math.max(pct, 4)}%`,
+                width: "100%", height: barHeight,
                 background: isCurrent ? "#038CF1" : isPast ? "rgba(3,140,241,0.5)" : "rgba(255,255,255,0.1)",
                 borderRadius: 2, transition: "height 0.3s ease",
               }} />
