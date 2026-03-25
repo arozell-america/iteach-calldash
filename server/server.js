@@ -51,6 +51,7 @@ const state = {
   stats: { callsToday: 0, applicationsToday: 0, avgSpeedToCall: null },
   hourlyVolume: new Array(24).fill(0),
   callDurations: [],
+  zoomQueues: { totalWaiting: 0, avgWaitTime: 0, queues: [] },
 };
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
@@ -137,6 +138,7 @@ function getPublicState() {
     agents: state.agents, queues: state.queues,
     stats: { ...state.stats, avgHandleTime, longestCall, totalCallsHandled: durations.length },
     hourlyVolume: state.hourlyVolume,
+    zoomQueues: state.zoomQueues,
     timestamp: Date.now(),
   };
 }
@@ -620,6 +622,52 @@ async function pollGreatCalls() {
 setTimeout(pollGreatCalls, 10000);
 setInterval(pollGreatCalls, 60 * 1000);
 console.log('[SF] Great call polling enabled — every 60s');
+
+// ─── Zoom Call Queue Polling ─────────────────────────────────────────────────
+
+async function pollCallQueues() {
+  if (!ZOOM_ACCOUNT_ID || !ZOOM_CLIENT_ID || !ZOOM_CLIENT_SECRET) return;
+  const token = await getZoomToken();
+  if (!token) return;
+
+  try {
+    // Fetch all queue pages — filter to iteach site queues
+    let allQueues = [];
+    let nextPageToken = '';
+    do {
+      const url = 'https://api.zoom.us/v2/phone/call_queues?page_size=100' + (nextPageToken ? `&next_page_token=${nextPageToken}` : '');
+      const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+      if (!r.ok) { console.log('[Queues] API error:', r.status); return; }
+      const data = await r.json();
+      allQueues = allQueues.concat(data.call_queues || []);
+      nextPageToken = data.next_page_token || '';
+    } while (nextPageToken);
+
+    const active = allQueues.filter(q => q.status === 'active');
+    const totalWaiting = active.reduce((sum, q) => sum + (q.overflowed_calls || 0), 0);
+    const avgWaitTime = 0; // Not available from list endpoint
+
+    state.zoomQueues = {
+      totalWaiting,
+      avgWaitTime,
+      queues: active.map(q => ({
+        id: q.id, name: q.name,
+        waiting: q.overflowed_calls || 0,
+        serviceLevel: q.service_level || 0,
+        avgHandleTime: q.avg_handle_time || 0,
+      })),
+    };
+
+    broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+    console.log(`[Queues] Poll complete: ${active.length} active queues, ${totalWaiting} waiting`);
+  } catch (e) {
+    console.log('[Queues] Poll error:', e.message);
+  }
+}
+
+setTimeout(pollCallQueues, 15000);
+setInterval(pollCallQueues, 60 * 1000);
+console.log('[Queues] Polling enabled — every 60s');
 
 // ─── Daily Midnight Reset ────────────────────────────────────────────────────
 

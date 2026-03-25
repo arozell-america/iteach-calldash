@@ -194,7 +194,7 @@ function StatusSummaryBar({ manualAgents }) {
   );
 }
 
-function LiveTab({ manualAgents, tick, stats }) {
+function LiveTab({ manualAgents, tick, stats, zoomQueues }) {
   const onCallCount = manualAgents.filter(a => a.status === "on_call").length;
   const ringingCount = manualAgents.filter(a => a.status === "ringing").length;
   const availableCount = manualAgents.filter(a => a.status === "available").length;
@@ -210,8 +210,8 @@ function LiveTab({ manualAgents, tick, stats }) {
         <KpiTile label="Available" value={availableCount} color="#C1FD34" sub={`of ${totalActive} active`} size="large" />
         <KpiTile label="Utilization" value={`${utilization}%`} color={thresholdColor(utilization, 60, 80)} sub={`${onCallCount} of ${totalActive}`} size="large" />
         <KpiTile label="Calls Today" value={stats.callsToday || 0} color="#038CF1" />
-        <PlaceholderKpi label="Queue Waiting" sub="Zoom Queue API" />
-        <PlaceholderKpi label="Avg Wait Time" sub="Zoom Queue API" />
+        <KpiTile label="Queue Waiting" value={zoomQueues.totalWaiting} color={zoomQueues.totalWaiting > 3 ? "#FF3B5C" : zoomQueues.totalWaiting > 0 ? "#FFB800" : "#C1FD34"} sub={`${zoomQueues.queues?.length || 0} active queues`} />
+        <KpiTile label="Avg Wait Time" value={zoomQueues.avgWaitTime ? fmtMins(zoomQueues.avgWaitTime) : "0s"} color={zoomQueues.avgWaitTime > 120 ? "#FF3B5C" : "#C1FD34"} sub="Across all queues" />
       </div>
 
       {/* Status bar */}
@@ -367,8 +367,8 @@ function PerformanceTab({ manualAgents, stats, hourlyVolume }) {
               <KpiTile label="Enrollments" value={totalEnrollments} color="#00BEA8" sub={`${stats.applicationsToday || 0} applications`} />
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <PlaceholderKpi label="Abandonment Rate" sub="Zoom Queue API" />
-              <PlaceholderKpi label="Avg Speed to Answer" sub="Zoom Queue API" />
+              <PlaceholderKpi label="Abandonment Rate" sub="Needs Zoom Power Pack" />
+              <PlaceholderKpi label="Avg Speed to Answer" sub="Needs Zoom Power Pack" />
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -473,6 +473,7 @@ export default function App() {
   const agents = data?.agents || {};
   const stats = data?.stats || {};
   const hourlyVolume = data?.hourlyVolume || new Array(24).fill(0);
+  const zoomQueues = data?.zoomQueues || { totalWaiting: 0, avgWaitTime: 0, queues: [] };
 
   const leadTeams = TEAM_LEADS[selectedLead] || TEAM_LEADS["All"];
   const manualAgents = useMemo(() =>
@@ -584,7 +585,7 @@ export default function App() {
 
         {/* ── Tab Content ─────────────────────────────────────── */}
         {activeTab === "live" ? (
-          <LiveTab manualAgents={manualAgents} tick={tick} stats={stats} />
+          <LiveTab manualAgents={manualAgents} tick={tick} stats={stats} zoomQueues={zoomQueues} />
         ) : (
           <PerformanceTab manualAgents={manualAgents} stats={stats} hourlyVolume={hourlyVolume} />
         )}
