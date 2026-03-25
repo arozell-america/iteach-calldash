@@ -374,7 +374,7 @@ function PerformanceTab({ manualAgents, stats, hourlyVolume }) {
               />
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <KpiTile label="Longest Call" value={stats.longestCall ? fmtMins(stats.longestCall) : "—"} color={stats.longestCall > 900 ? "#FF3B5C" : "#038CF1"} sub={stats.longestCallAgent || ""} />
+              <KpiTile label="Longest Call" value={stats.longestCall ? fmtMins(stats.longestCall) : "—"} color={stats.longestCall > 900 ? "#FF3B5C" : "#038CF1"} sub={stats.longestCallAgent || (stats.longestCall ? "Agent pending" : "")} />
               <KpiTile label="Enrollments" value={totalEnrollments} color="#00BEA8" sub={`${stats.applicationsToday || 0} applications`} />
             </div>
             <div style={{ display: "flex", gap: 10 }}>
