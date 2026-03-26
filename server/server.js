@@ -85,6 +85,7 @@ async function loadAgentsFromDynamo() {
         callsToday: 0,
         enrollmentsToday: 0,
         greatCallsToday: 0,
+        longestCallToday: 0,
       };
     }
     console.log('[DynamoDB] Loaded', items.length, 'agents');
@@ -125,6 +126,9 @@ function recordCallEnd(agentKey) {
     const duration = Math.round((Date.now() - agent.callStartTime) / 1000);
     if (duration > 0 && duration < 7200) {
       state.callDurations.push(duration);
+      if (duration > (agent.longestCallToday || 0)) {
+        agent.longestCallToday = duration;
+      }
       if (!state.longestCallAgent || duration > state.longestCallAgent.duration) {
         state.longestCallAgent = { name: agent.name, duration };
       }
@@ -214,7 +218,7 @@ function autoRegister(userId, userObj) {
   state.agents[userId] = {
     id: userId, name, team, extension: userObj?.extension_number || '', email,
     status: 'available', callStartTime: null, callerId: null, callDirection: null,
-    enrollmentsToday: 0, callsToday: 0, autoRegistered: true,
+    enrollmentsToday: 0, callsToday: 0, longestCallToday: 0, autoRegistered: true,
   };
   saveState();
 }
@@ -390,7 +394,7 @@ app.get('/api/debug-sf', async (req, res) => {
 app.post('/api/agents', async (req, res) => {
   const { id, name, team, extension, email } = req.body;
   if (!id || !name) return res.status(400).json({ error: 'id and name required' });
-  const agent = { id, name, team: team || '', extension: extension || '', email: email || '', status: 'available', callsToday: 0, enrollmentsToday: 0, greatCallsToday: 0 };
+  const agent = { id, name, team: team || '', extension: extension || '', email: email || '', status: 'available', callsToday: 0, enrollmentsToday: 0, greatCallsToday: 0, longestCallToday: 0 };
   state.agents[id] = agent;
   try {
     await dynamo.send(new PutItemCommand({ TableName: AGENTS_TABLE, Item: marshall({ id, name, team: team || '', extension: extension || '', email: email || '' }) }));
@@ -445,7 +449,7 @@ app.post('/api/agents/:id/enrollment', (req, res) => {
 });
 
 app.post('/api/reset-daily', (req, res) => {
-  Object.values(state.agents).forEach(a => { a.callsToday = 0; a.enrollmentsToday = 0; });
+  Object.values(state.agents).forEach(a => { a.callsToday = 0; a.enrollmentsToday = 0; a.longestCallToday = 0; });
   Object.values(state.queues).forEach(q => { q.callsHandled = 0; q.waiting = 0; });
   state.stats.callsToday = 0;
   state.stats.applicationsToday = 0;
@@ -712,6 +716,7 @@ function scheduleMidnightReset() {
       a.callsToday = 0;
       a.enrollmentsToday = 0;
       a.greatCallsToday = 0;
+      a.longestCallToday = 0;
     });
     state.stats.callsToday = 0;
     state.stats.greatCallsToday = 0;

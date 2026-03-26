@@ -121,7 +121,7 @@ function SectionHeader({ color, label }) {
 
 // ─── Live Tab Components ─────────────────────────────────────────────────────
 
-function AgentCard({ agent, tick }) {
+function AgentCard({ agent, tick, expanded }) {
   const cfg = STATUS_CONFIG[agent.status] || STATUS_CONFIG.available;
   const elapsedSecs = agent.callStartTime ? (tick - agent.callStartTime) / 1000 : 0;
   const elapsed = elapsedSecs > 0 ? fmt(elapsedSecs) : null;
@@ -170,6 +170,18 @@ function AgentCard({ agent, tick }) {
         </div>
         {elapsed && <span style={{ fontSize: 13, fontWeight: 700, color: alertColor || cfg.color, fontFamily: "'DM Mono', monospace" }}>{elapsed}</span>}
       </div>
+      {expanded && (
+        <div style={{ paddingLeft: 16, display: "flex", gap: 12, marginTop: 2, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 0.5 }}>Calls</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#038CF1", fontFamily: "'DM Mono', monospace" }}>{agent.callsToday || 0}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 0.5 }}>Longest</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#00BEA8", fontFamily: "'DM Mono', monospace" }}>{agent.longestCallToday ? fmtMins(agent.longestCallToday) : "—"}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -205,7 +217,7 @@ function StatusSummaryBar({ manualAgents }) {
   );
 }
 
-function LiveTab({ manualAgents, tick, stats, zoomQueues }) {
+function LiveTab({ manualAgents, tick, stats, zoomQueues, expanded }) {
   const onCallCount = manualAgents.filter(a => a.status === "on_call").length;
   const ringingCount = manualAgents.filter(a => a.status === "ringing").length;
   const availableCount = manualAgents.filter(a => a.status === "available").length;
@@ -235,7 +247,7 @@ function LiveTab({ manualAgents, tick, stats, zoomQueues }) {
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 10 }}>
-          {manualAgents.map(agent => <AgentCard key={agent.id} agent={agent} tick={tick} />)}
+          {manualAgents.map(agent => <AgentCard key={agent.id} agent={agent} tick={tick} expanded={expanded} />)}
         </div>
       )}
     </div>
@@ -480,6 +492,7 @@ export default function App() {
 
   const [selectedLead, setSelectedLead] = useState("All");
   const [activeTab, setActiveTab] = useState("live");
+  const [expanded, setExpanded] = useState(false);
 
   const agents = data?.agents || {};
   const stats = data?.stats || {};
@@ -592,11 +605,22 @@ export default function App() {
               fontFamily: "'Poppins', sans-serif", transition: "all 0.2s ease",
             }}>{lead}</button>
           ))}
+
+          {activeTab === "live" && (<>
+            <div style={{ width: 1, height: 20, background: "rgba(255,255,255,0.10)", margin: "0 8px" }} />
+            <button onClick={() => setExpanded(e => !e)} style={{
+              padding: "4px 10px", borderRadius: 14, border: "none", cursor: "pointer",
+              background: expanded ? "rgba(0,190,168,0.18)" : "rgba(255,255,255,0.05)",
+              color: expanded ? "#00BEA8" : "rgba(255,255,255,0.4)",
+              fontSize: 10, fontWeight: expanded ? 700 : 400,
+              fontFamily: "'Poppins', sans-serif", transition: "all 0.2s ease",
+            }}>{expanded ? "Compact" : "Expanded"}</button>
+          </>)}
         </div>
 
         {/* ── Tab Content ─────────────────────────────────────── */}
         {activeTab === "live" ? (
-          <LiveTab manualAgents={manualAgents} tick={tick} stats={stats} zoomQueues={zoomQueues} />
+          <LiveTab manualAgents={manualAgents} tick={tick} stats={stats} zoomQueues={zoomQueues} expanded={expanded} />
         ) : (
           <PerformanceTab manualAgents={manualAgents} stats={stats} hourlyVolume={hourlyVolume} />
         )}
