@@ -724,61 +724,118 @@ async function pollCallQueues() {
     const active = allQueues.filter(q => q.status === 'active');
     const totalWaiting = active.reduce((sum, q) => sum + (q.overflowed_calls || 0), 0);
 
-    // 2. Power Pack: daily analytics
+    // 2. Compute queue metrics from call history
     let avgWaitTime = 0, avgSpeedToAnswer = 0, abandonmentRate = 0, serviceLevel = 0;
     let maxWaitTime = 0, totalAnswered = 0, totalAbandoned = 0, totalOverflowed = 0, totalVoicemail = 0;
     let queueDetails = [];
+    let callQuality = { mos: 0, jitter: 0, latency: 0, packetLoss: 0 };
     try {
       const today = new Date().toISOString().slice(0, 10);
-      const metricsUrl = `https://api.zoom.us/v2/phone/call_queues/metrics?from=${today}&to=${today}&page_size=100`;
-      const mr = await fetch(metricsUrl, { headers: { Authorization: 'Bearer ' + token } });
-      if (mr.ok) {
-        const metricsData = await mr.json();
-        const queues = metricsData.call_queues || [];
-        if (queues.length > 0) {
-          const totalCalls = queues.reduce((s, q) => s + (q.total_calls || 0), 0);
-          totalAbandoned = queues.reduce((s, q) => s + (q.abandoned_calls || 0), 0);
-          totalAnswered = queues.reduce((s, q) => s + (q.answered_calls || 0), 0);
-          totalOverflowed = queues.reduce((s, q) => s + (q.overflowed_calls || q.overflow_calls || 0), 0);
-          totalVoicemail = queues.reduce((s, q) => s + (q.voicemail_calls || 0), 0);
-          const waitTimeSum = queues.reduce((s, q) => s + (q.avg_wait_time || 0) * (q.total_calls || 0), 0);
-          const asaSum = queues.reduce((s, q) => s + (q.avg_answer_time || q.avg_speed_of_answer || 0) * (q.answered_calls || 0), 0);
-          const slSum = queues.reduce((s, q) => s + (q.service_level || 0), 0);
-          maxWaitTime = queues.reduce((m, q) => Math.max(m, q.max_wait_time || q.longest_wait_time || 0), 0);
+      // Fetch all call history pages for today
+      let allCalls = [];
+      let nextPage = '';
+      do {
+        const histUrl = `https://api.zoom.us/v2/phone/call_history?from=${today}&to=${today}&page_size=100&type=all` + (nextPage ? `&next_page_token=${nextPage}` : '');
+        const hr = await fetch(histUrl, { headers: { Authorization: 'Bearer ' + token } });
+        if (!hr.ok) { console.log('[CallHistory] API error:', hr.status); break; }
+        const hd = await hr.json();
+        allCalls = allCalls.concat(hd.call_logs || hd.call_history || []);
+        nextPage = hd.next_page_token || '';
+      } while (nextPage);
 
-          avgWaitTime = totalCalls > 0 ? Math.round(waitTimeSum / totalCalls) : 0;
-          avgSpeedToAnswer = totalAnswered > 0 ? Math.round(asaSum / totalAnswered) : 0;
-          abandonmentRate = totalCalls > 0 ? Math.round((totalAbandoned / totalCalls) * 100) : 0;
-          serviceLevel = queues.length > 0 ? Math.round(slSum / queues.length) : 0;
+      if (allCalls.length > 0) {
+        // Filter to inbound external calls (most relevant for queue metrics)
+        const inbound = allCalls.filter(c => c.direction === 'inbound' && c.connect_type === 'external');
+        const queueCalls = inbound.filter(c => c.callee_ext_type === 'call_queue');
 
-          // Per-queue breakdown
-          queueDetails = queues.map(q => ({
-            id: q.call_queue_id || q.id, name: q.call_queue_name || q.name || 'Unknown',
-            totalCalls: q.total_calls || 0, answered: q.answered_calls || 0,
-            abandoned: q.abandoned_calls || 0, avgWait: q.avg_wait_time || 0,
-            avgAnswer: q.avg_answer_time || q.avg_speed_of_answer || 0,
-            sl: q.service_level || 0,
-          }));
+        // Compute wait times (answer_time - start_time)
+        const SLA_THRESHOLD = 20; // seconds
+        const waitTimes = [];
+        const answerTimes = [];
+        let answered = 0, abandoned = 0, slMet = 0;
+
+        for (const call of inbound) {
+          const start = new Date(call.start_time).getTime();
+          const answer = call.answer_time ? new Date(call.answer_time).getTime() : null;
+          const end = new Date(call.end_time).getTime();
+          const waitSecs = answer ? (answer - start) / 1000 : (end - start) / 1000;
+
+          if (waitSecs >= 0 && waitSecs < 3600) waitTimes.push(waitSecs);
+
+          if (call.call_result === 'answered' || call.call_result === 'connected') {
+            answered++;
+            if (answer) {
+              const asa = (answer - start) / 1000;
+              if (asa >= 0 && asa < 3600) answerTimes.push(asa);
+              if (asa <= SLA_THRESHOLD) slMet++;
+            }
+          } else if (call.call_result === 'abandoned' || call.call_result === 'missed') {
+            abandoned++;
+          }
         }
-        console.log(`[Queues] Power Pack metrics: ASA=${avgSpeedToAnswer}s, abandon=${abandonmentRate}%, SL=${serviceLevel}%, maxWait=${maxWaitTime}s`);
-      } else {
-        console.log('[Queues] Power Pack metrics not available:', mr.status);
+
+        totalAnswered = answered;
+        totalAbandoned = abandoned;
+        const totalInbound = inbound.length;
+        avgWaitTime = waitTimes.length > 0 ? Math.round(waitTimes.reduce((a, b) => a + b, 0) / waitTimes.length) : 0;
+        avgSpeedToAnswer = answerTimes.length > 0 ? Math.round(answerTimes.reduce((a, b) => a + b, 0) / answerTimes.length) : 0;
+        maxWaitTime = waitTimes.length > 0 ? Math.round(Math.max(...waitTimes)) : 0;
+        abandonmentRate = totalInbound > 0 ? Math.round((abandoned / totalInbound) * 100) : 0;
+        serviceLevel = totalInbound > 0 ? Math.round((slMet / totalInbound) * 100) : 0;
+
+        // Per-queue breakdown
+        const queueMap = {};
+        for (const call of queueCalls) {
+          const qName = call.callee_name || 'Unknown';
+          if (!queueMap[qName]) queueMap[qName] = { name: qName, totalCalls: 0, answered: 0, abandoned: 0, waitTimes: [], answerTimes: [], slMet: 0 };
+          const q = queueMap[qName];
+          q.totalCalls++;
+          const start = new Date(call.start_time).getTime();
+          const answer = call.answer_time ? new Date(call.answer_time).getTime() : null;
+          const end = new Date(call.end_time).getTime();
+          const waitSecs = answer ? (answer - start) / 1000 : (end - start) / 1000;
+          if (waitSecs >= 0 && waitSecs < 3600) q.waitTimes.push(waitSecs);
+          if (call.call_result === 'answered' || call.call_result === 'connected') {
+            q.answered++;
+            if (answer) {
+              const asa = (answer - start) / 1000;
+              if (asa >= 0 && asa < 3600) q.answerTimes.push(asa);
+              if (asa <= SLA_THRESHOLD) q.slMet++;
+            }
+          } else if (call.call_result === 'abandoned' || call.call_result === 'missed') {
+            q.abandoned++;
+          }
+        }
+
+        queueDetails = Object.values(queueMap).map(q => ({
+          id: q.name, name: q.name,
+          totalCalls: q.totalCalls, answered: q.answered, abandoned: q.abandoned,
+          avgWait: q.waitTimes.length > 0 ? Math.round(q.waitTimes.reduce((a, b) => a + b, 0) / q.waitTimes.length) : 0,
+          avgAnswer: q.answerTimes.length > 0 ? Math.round(q.answerTimes.reduce((a, b) => a + b, 0) / q.answerTimes.length) : 0,
+          sl: q.totalCalls > 0 ? Math.round((q.slMet / q.totalCalls) * 100) : 0,
+        })).sort((a, b) => b.totalCalls - a.totalCalls);
+
+        console.log(`[CallHistory] ${allCalls.length} calls today, ${inbound.length} inbound, ${queueCalls.length} queue calls — ASA=${avgSpeedToAnswer}s, abandon=${abandonmentRate}%, SL=${serviceLevel}%`);
       }
     } catch (me) {
-      console.log('[Queues] Power Pack metrics error:', me.message);
+      console.log('[CallHistory] metrics error:', me.message);
     }
 
-    let callQuality = { mos: 0, jitter: 0, latency: 0, packetLoss: 0 };
+    // Merge waiting counts from queue list into queue details
+    const mergedQueues = queueDetails.length > 0 ? queueDetails.map(q => {
+      const liveQ = active.find(a => a.name === q.name || q.name?.includes(a.name));
+      return { ...q, waiting: liveQ ? (liveQ.overflowed_calls || 0) : 0 };
+    }) : active.map(q => ({
+      id: q.id, name: q.name, waiting: q.overflowed_calls || 0,
+      totalCalls: 0, answered: 0, abandoned: 0, avgWait: 0, avgAnswer: 0, sl: 0,
+    }));
 
     state.zoomQueues = {
       totalWaiting, avgWaitTime, avgSpeedToAnswer, abandonmentRate,
       serviceLevel, maxWaitTime, longestCurrentWait: 0,
       totalAnswered, totalAbandoned, totalOverflowed, totalVoicemail,
       callQuality,
-      queues: queueDetails.length > 0 ? queueDetails : active.map(q => ({
-        id: q.id, name: q.name, waiting: q.overflowed_calls || 0,
-        totalCalls: 0, answered: 0, abandoned: 0, avgWait: 0, avgAnswer: 0, sl: 0,
-      })),
+      queues: mergedQueues,
     };
 
     broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
