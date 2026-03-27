@@ -52,7 +52,13 @@ const state = {
   hourlyVolume: new Array(24).fill(0),
   callDurations: [],
   longestCallAgent: null,
-  zoomQueues: { totalWaiting: 0, avgWaitTime: 0, avgSpeedToAnswer: 0, abandonmentRate: 0, serviceLevel: 0, queues: [] },
+  zoomQueues: {
+    totalWaiting: 0, avgWaitTime: 0, avgSpeedToAnswer: 0, abandonmentRate: 0,
+    serviceLevel: 0, maxWaitTime: 0, longestCurrentWait: 0,
+    totalAnswered: 0, totalAbandoned: 0, totalOverflowed: 0, totalVoicemail: 0,
+    callQuality: { mos: 0, jitter: 0, latency: 0, packetLoss: 0 },
+    queues: [],
+  },
 };
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
@@ -654,13 +660,14 @@ console.log('[SF] Great call polling enabled — every 60s');
 
 // ─── Zoom Call Queue Polling ─────────────────────────────────────────────────
 
+// Full queue poll — runs every 60s, fetches queue list + Power Pack analytics
 async function pollCallQueues() {
   if (!ZOOM_ACCOUNT_ID || !ZOOM_CLIENT_ID || !ZOOM_CLIENT_SECRET) return;
   const token = await getZoomToken();
   if (!token) return;
 
   try {
-    // Fetch all queue pages
+    // 1. Fetch all queue pages
     let allQueues = [];
     let nextPageToken = '';
     do {
@@ -675,8 +682,10 @@ async function pollCallQueues() {
     const active = allQueues.filter(q => q.status === 'active');
     const totalWaiting = active.reduce((sum, q) => sum + (q.overflowed_calls || 0), 0);
 
-    // Power Pack: fetch queue analytics for today
+    // 2. Power Pack: daily analytics
     let avgWaitTime = 0, avgSpeedToAnswer = 0, abandonmentRate = 0, serviceLevel = 0;
+    let maxWaitTime = 0, totalAnswered = 0, totalAbandoned = 0, totalOverflowed = 0, totalVoicemail = 0;
+    let queueDetails = [];
     try {
       const today = new Date().toISOString().slice(0, 10);
       const metricsUrl = `https://api.zoom.us/v2/phone/metrics/call_queues?from=${today}&to=${today}&page_size=100`;
@@ -686,36 +695,70 @@ async function pollCallQueues() {
         const queues = metricsData.call_queues || [];
         if (queues.length > 0) {
           const totalCalls = queues.reduce((s, q) => s + (q.total_calls || 0), 0);
-          const totalAbandoned = queues.reduce((s, q) => s + (q.abandoned_calls || 0), 0);
-          const totalAnswered = queues.reduce((s, q) => s + (q.answered_calls || 0), 0);
+          totalAbandoned = queues.reduce((s, q) => s + (q.abandoned_calls || 0), 0);
+          totalAnswered = queues.reduce((s, q) => s + (q.answered_calls || 0), 0);
+          totalOverflowed = queues.reduce((s, q) => s + (q.overflowed_calls || q.overflow_calls || 0), 0);
+          totalVoicemail = queues.reduce((s, q) => s + (q.voicemail_calls || 0), 0);
           const waitTimeSum = queues.reduce((s, q) => s + (q.avg_wait_time || 0) * (q.total_calls || 0), 0);
           const asaSum = queues.reduce((s, q) => s + (q.avg_answer_time || q.avg_speed_of_answer || 0) * (q.answered_calls || 0), 0);
           const slSum = queues.reduce((s, q) => s + (q.service_level || 0), 0);
+          maxWaitTime = queues.reduce((m, q) => Math.max(m, q.max_wait_time || q.longest_wait_time || 0), 0);
 
           avgWaitTime = totalCalls > 0 ? Math.round(waitTimeSum / totalCalls) : 0;
           avgSpeedToAnswer = totalAnswered > 0 ? Math.round(asaSum / totalAnswered) : 0;
           abandonmentRate = totalCalls > 0 ? Math.round((totalAbandoned / totalCalls) * 100) : 0;
           serviceLevel = queues.length > 0 ? Math.round(slSum / queues.length) : 0;
+
+          // Per-queue breakdown
+          queueDetails = queues.map(q => ({
+            id: q.call_queue_id || q.id, name: q.call_queue_name || q.name || 'Unknown',
+            totalCalls: q.total_calls || 0, answered: q.answered_calls || 0,
+            abandoned: q.abandoned_calls || 0, avgWait: q.avg_wait_time || 0,
+            avgAnswer: q.avg_answer_time || q.avg_speed_of_answer || 0,
+            sl: q.service_level || 0,
+          }));
         }
-        console.log(`[Queues] Power Pack metrics: ASA=${avgSpeedToAnswer}s, abandon=${abandonmentRate}%, SL=${serviceLevel}%`);
+        console.log(`[Queues] Power Pack metrics: ASA=${avgSpeedToAnswer}s, abandon=${abandonmentRate}%, SL=${serviceLevel}%, maxWait=${maxWaitTime}s`);
       } else {
-        console.log('[Queues] Power Pack metrics not available:', mr.status, await mr.text().catch(() => ''));
+        console.log('[Queues] Power Pack metrics not available:', mr.status);
       }
     } catch (me) {
       console.log('[Queues] Power Pack metrics error:', me.message);
     }
 
+    // 3. Power Pack: call quality metrics
+    let callQuality = { mos: 0, jitter: 0, latency: 0, packetLoss: 0 };
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const qosUrl = `https://api.zoom.us/v2/phone/metrics/quality?from=${today}&to=${today}&type=1`;
+      const qr = await fetch(qosUrl, { headers: { Authorization: 'Bearer ' + token } });
+      if (qr.ok) {
+        const qosData = await qr.json();
+        if (qosData.quality_scores || qosData.audio) {
+          const scores = qosData.quality_scores || qosData.audio || qosData;
+          callQuality = {
+            mos: scores.avg_mos || scores.mos || 0,
+            jitter: scores.avg_jitter || scores.jitter || 0,
+            latency: scores.avg_latency || scores.latency || 0,
+            packetLoss: scores.avg_packet_loss || scores.packet_loss || 0,
+          };
+        }
+        console.log(`[Queues] Call quality: MOS=${callQuality.mos}, jitter=${callQuality.jitter}ms, latency=${callQuality.latency}ms`);
+      } else {
+        console.log('[Queues] Call quality not available:', qr.status);
+      }
+    } catch (qe) {
+      console.log('[Queues] Call quality error:', qe.message);
+    }
+
     state.zoomQueues = {
-      totalWaiting,
-      avgWaitTime,
-      avgSpeedToAnswer,
-      abandonmentRate,
-      serviceLevel,
-      queues: active.map(q => ({
-        id: q.id, name: q.name,
-        waiting: q.overflowed_calls || 0,
-        serviceLevel: q.service_level || 0,
-        avgHandleTime: q.avg_handle_time || 0,
+      totalWaiting, avgWaitTime, avgSpeedToAnswer, abandonmentRate,
+      serviceLevel, maxWaitTime, longestCurrentWait: 0,
+      totalAnswered, totalAbandoned, totalOverflowed, totalVoicemail,
+      callQuality,
+      queues: queueDetails.length > 0 ? queueDetails : active.map(q => ({
+        id: q.id, name: q.name, waiting: q.overflowed_calls || 0,
+        totalCalls: 0, answered: 0, abandoned: 0, avgWait: 0, avgAnswer: 0, sl: 0,
       })),
     };
 
@@ -726,9 +769,38 @@ async function pollCallQueues() {
   }
 }
 
+// Live queue snapshot — runs every 15s for real-time waiting data
+async function pollLiveQueues() {
+  if (!ZOOM_ACCOUNT_ID || !ZOOM_CLIENT_ID || !ZOOM_CLIENT_SECRET) return;
+  const token = await getZoomToken();
+  if (!token) return;
+
+  try {
+    const url = 'https://api.zoom.us/v2/phone/call_queues?page_size=100';
+    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    if (!r.ok) return;
+    const data = await r.json();
+    const active = (data.call_queues || []).filter(q => q.status === 'active');
+    const totalWaiting = active.reduce((sum, q) => sum + (q.overflowed_calls || 0), 0);
+
+    state.zoomQueues.totalWaiting = totalWaiting;
+
+    // Update per-queue waiting counts
+    for (const aq of active) {
+      const existing = state.zoomQueues.queues.find(q => q.id === aq.id || q.id === aq.call_queue_id);
+      if (existing) existing.waiting = aq.overflowed_calls || 0;
+    }
+
+    broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+  } catch (e) {
+    console.log('[LiveQueues] error:', e.message);
+  }
+}
+
 setTimeout(pollCallQueues, 15000);
 setInterval(pollCallQueues, 60 * 1000);
-console.log('[Queues] Polling enabled — every 60s');
+setInterval(pollLiveQueues, 15 * 1000);
+console.log('[Queues] Full poll every 60s, live poll every 15s');
 
 // ─── Daily Midnight Reset ────────────────────────────────────────────────────
 

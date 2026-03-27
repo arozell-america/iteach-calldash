@@ -546,6 +546,64 @@ function PerformanceTab({ manualAgents, stats, hourlyVolume, theme, zoomQueues }
         </div>
       </div>
 
+      {/* ── Queue Health ────────────────────────────────────── */}
+      <div>
+        <SectionHeader color="#6B5CE7" label="Queue Health" theme={theme} />
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <KpiTile label="Service Level" value={zoomQueues.serviceLevel ? `${zoomQueues.serviceLevel}%` : "—"} color={zoomQueues.serviceLevel >= 80 ? "#22C55E" : zoomQueues.serviceLevel >= 60 ? "#FFB800" : "#FF3B5C"} sub="% answered within SLA" theme={theme} />
+          <KpiTile label="Max Wait Time" value={zoomQueues.maxWaitTime ? fmtMins(zoomQueues.maxWaitTime) : "—"} color={zoomQueues.maxWaitTime > 120 ? "#FF3B5C" : zoomQueues.maxWaitTime > 60 ? "#FFB800" : "#22C55E"} sub="Longest wait today" theme={theme} />
+          <KpiTile label="Answered" value={zoomQueues.totalAnswered || 0} color="#22C55E" sub="Calls picked up" theme={theme} />
+          <KpiTile label="Abandoned" value={zoomQueues.totalAbandoned || 0} color="#FF3B5C" sub="Hung up waiting" theme={theme} />
+          <KpiTile label="Overflowed" value={zoomQueues.totalOverflowed || 0} color="#FFB800" sub="Exceeded queue capacity" theme={theme} />
+        </div>
+
+        {/* Per-queue breakdown */}
+        {zoomQueues.queues?.length > 0 && zoomQueues.queues.some(q => q.totalCalls > 0) && (
+          <div style={{ marginTop: 10, background: t.tileBg, border: `1px solid ${t.cardBorder}`, borderRadius: 10, overflow: "hidden" }}>
+            <div style={{
+              display: "grid", gridTemplateColumns: "1.5fr 55px 55px 55px 65px 65px 55px",
+              gap: 6, padding: "8px 12px",
+              background: theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", fontSize: 8, fontWeight: 700,
+              letterSpacing: 1.5, color: t.textFaint, textTransform: "uppercase",
+            }}>
+              <span>Queue</span><span style={{ textAlign: "center" }}>Calls</span>
+              <span style={{ textAlign: "center" }}>Ans</span><span style={{ textAlign: "center" }}>Abn</span>
+              <span style={{ textAlign: "center" }}>Avg Wait</span><span style={{ textAlign: "center" }}>ASA</span>
+              <span style={{ textAlign: "center" }}>SL%</span>
+            </div>
+            {zoomQueues.queues.filter(q => q.totalCalls > 0).map(q => (
+              <div key={q.id} style={{
+                display: "grid", gridTemplateColumns: "1.5fr 55px 55px 55px 65px 65px 55px",
+                gap: 6, padding: "7px 12px", fontSize: 11,
+                background: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                borderBottom: `1px solid ${t.cardBorder}`,
+              }}>
+                <span style={{ fontWeight: 600, color: t.text }}>{q.name}</span>
+                <span style={{ textAlign: "center", fontFamily: "'DM Mono', monospace", color: "#038CF1" }}>{q.totalCalls}</span>
+                <span style={{ textAlign: "center", fontFamily: "'DM Mono', monospace", color: "#22C55E" }}>{q.answered}</span>
+                <span style={{ textAlign: "center", fontFamily: "'DM Mono', monospace", color: "#FF3B5C" }}>{q.abandoned}</span>
+                <span style={{ textAlign: "center", fontFamily: "'DM Mono', monospace", color: t.textMuted }}>{q.avgWait ? fmtMins(q.avgWait) : "—"}</span>
+                <span style={{ textAlign: "center", fontFamily: "'DM Mono', monospace", color: t.textMuted }}>{q.avgAnswer ? fmtMins(q.avgAnswer) : "—"}</span>
+                <span style={{ textAlign: "center", fontFamily: "'DM Mono', monospace", color: q.sl >= 80 ? "#22C55E" : q.sl >= 60 ? "#FFB800" : "#FF3B5C" }}>{q.sl ? `${q.sl}%` : "—"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Call Quality ─────────────────────────────────────── */}
+      {(zoomQueues.callQuality?.mos > 0) && (
+        <div>
+          <SectionHeader color="#00BEA8" label="Call Quality" theme={theme} />
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <KpiTile label="MOS Score" value={zoomQueues.callQuality.mos ? zoomQueues.callQuality.mos.toFixed(1) : "—"} color={zoomQueues.callQuality.mos >= 4 ? "#22C55E" : zoomQueues.callQuality.mos >= 3 ? "#FFB800" : "#FF3B5C"} sub="Mean Opinion Score (1-5)" theme={theme} />
+            <KpiTile label="Jitter" value={zoomQueues.callQuality.jitter ? `${Math.round(zoomQueues.callQuality.jitter)}ms` : "—"} color={zoomQueues.callQuality.jitter <= 30 ? "#22C55E" : zoomQueues.callQuality.jitter <= 50 ? "#FFB800" : "#FF3B5C"} sub="Packet arrival variance" theme={theme} />
+            <KpiTile label="Latency" value={zoomQueues.callQuality.latency ? `${Math.round(zoomQueues.callQuality.latency)}ms` : "—"} color={zoomQueues.callQuality.latency <= 150 ? "#22C55E" : zoomQueues.callQuality.latency <= 300 ? "#FFB800" : "#FF3B5C"} sub="Round-trip time" theme={theme} />
+            <KpiTile label="Packet Loss" value={zoomQueues.callQuality.packetLoss ? `${zoomQueues.callQuality.packetLoss.toFixed(1)}%` : "—"} color={zoomQueues.callQuality.packetLoss <= 1 ? "#22C55E" : zoomQueues.callQuality.packetLoss <= 3 ? "#FFB800" : "#FF3B5C"} sub="Lost packets %" theme={theme} />
+          </div>
+        </div>
+      )}
+
       {/* ── Quality & Outcomes ──────────────────────────────── */}
       <div>
         <SectionHeader color="#038CF1" label="Quality & Outcomes" theme={theme} />
@@ -558,7 +616,6 @@ function PerformanceTab({ manualAgents, stats, hourlyVolume, theme, zoomQueues }
           />
           <PlaceholderKpi label="First Call Resolution" sub="Needs CRM integration" theme={theme} />
           <PlaceholderKpi label="Transfers / Escalations" sub="Needs call routing data" theme={theme} />
-          <PlaceholderKpi label="Repeat Callers (7d)" sub="Needs call history" theme={theme} />
         </div>
         {totalGreatCalls > 0 && (
           <div style={{ marginTop: 10, background: "rgba(255,215,0,0.06)", border: "1px solid rgba(255,215,0,0.20)", borderRadius: 10, padding: "12px 14px" }}>
