@@ -508,7 +508,7 @@ function AgentPerfRow({ agent, theme }) {
   );
 }
 
-function PerformanceTab({ manualAgents, stats, hourlyVolume, theme, zoomQueues }) {
+function PerformanceTab({ manualAgents, stats, hourlyVolume, theme, zoomQueues, sfPipeline }) {
   const t = THEMES[theme];
   const totalEnrollments = manualAgents.reduce((sum, a) => sum + (a.enrollmentsToday || 0), 0);
   const totalGreatCalls = manualAgents.reduce((sum, a) => sum + (a.greatCallsToday || 0), 0);
@@ -636,7 +636,21 @@ function PerformanceTab({ manualAgents, stats, hourlyVolume, theme, zoomQueues }
       <div>
         <SectionHeader color="#A78BFA" label="Pipeline Impact" theme={theme} />
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <KpiTile label="Enrollments Today" value={totalEnrollments} color="#00BEA8" sub="From Salesforce" theme={theme} />
+          <KpiTile label="Applied Today" value={sfPipeline.appliedToday || 0} color="#A78BFA" sub="New applications" theme={theme} />
+          <KpiTile label="Enrolled Today" value={sfPipeline.enrolledToday || 0} color="#00BEA8" sub="From Salesforce" theme={theme} />
+          <KpiTile
+            label="Avg Days to Enroll"
+            value={sfPipeline.avgDaysToEnroll ? `${sfPipeline.avgDaysToEnroll}d` : "—"}
+            color={sfPipeline.avgDaysToEnroll <= 30 ? "#22C55E" : sfPipeline.avgDaysToEnroll <= 90 ? "#FFB800" : "#FF3B5C"}
+            sub="Applied to enrolled (30d avg)" theme={theme}
+          />
+          <KpiTile
+            label="30-Day Conversion"
+            value={sfPipeline.conversionRate30 ? `${sfPipeline.conversionRate30}%` : "—"}
+            color={sfPipeline.conversionRate30 >= 50 ? "#22C55E" : sfPipeline.conversionRate30 >= 25 ? "#FFB800" : "#FF3B5C"}
+            sub={sfPipeline.applied30 ? `${sfPipeline.enrolled30} of ${sfPipeline.applied30} applicants` : "Last 30 days"}
+            theme={theme}
+          />
           <KpiTile
             label="Calls per Enrollment"
             value={totalEnrollments > 0 ? ((stats.callsToday || 0) / totalEnrollments).toFixed(1) : "—"}
@@ -644,9 +658,6 @@ function PerformanceTab({ manualAgents, stats, hourlyVolume, theme, zoomQueues }
             sub={totalEnrollments > 0 ? `${stats.callsToday} calls / ${totalEnrollments} enrolled` : "No enrollments yet"}
             theme={theme}
           />
-          <PlaceholderKpi label="Avg Time: Applied to First Call" sub="Needs Salesforce integration" theme={theme} />
-          <PlaceholderKpi label="Contact Rate" sub="% applicants reached" theme={theme} />
-          <PlaceholderKpi label="Conversion: Contacted vs Not" sub="Needs Salesforce pipeline" theme={theme} />
         </div>
         {totalEnrollments > 0 && (
           <div style={{ marginTop: 10, background: "rgba(0,190,168,0.06)", border: "1px solid rgba(0,190,168,0.20)", borderRadius: 10, padding: "12px 14px" }}>
@@ -658,6 +669,23 @@ function PerformanceTab({ manualAgents, stats, hourlyVolume, theme, zoomQueues }
                   <span style={{ fontSize: 14, fontWeight: 700, color: "#00BEA8", fontFamily: "'DM Mono', monospace" }}>{a.enrollmentsToday}</span>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+        {/* Pipeline status breakdown */}
+        {sfPipeline.statusCounts && Object.values(sfPipeline.statusCounts).some(v => v > 0) && (
+          <div style={{ marginTop: 10, background: t.tileBg, border: `1px solid ${t.cardBorder}`, borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: "#A78BFA", textTransform: "uppercase", marginBottom: 10 }}>Admission Pipeline (90 Days)</div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {Object.entries(sfPipeline.statusCounts).filter(([, v]) => v > 0).map(([status, count]) => {
+                const colors = { Applied: "#FFB800", Enrolled: "#22C55E", Inquiry: "#038CF1", Accepted: "#00BEA8", Withdrawn: "#FF3B5C", Denied: "#FF3B5C" };
+                return (
+                  <div key={status} style={{ display: "flex", alignItems: "center", gap: 6, background: (colors[status] || "#A78BFA") + "12", borderRadius: 8, padding: "5px 12px", border: `1px solid ${(colors[status] || "#A78BFA")}22` }}>
+                    <span style={{ fontSize: 11, color: t.text, fontWeight: 500 }}>{status}</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: colors[status] || "#A78BFA", fontFamily: "'DM Mono', monospace" }}>{count}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -823,7 +851,7 @@ export default function App() {
         {activeTab === "live" ? (
           <LiveTab manualAgents={manualAgents} tick={tick} stats={stats} zoomQueues={zoomQueues} expanded={expanded} theme={theme} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />
         ) : (
-          <PerformanceTab manualAgents={manualAgents} stats={stats} hourlyVolume={hourlyVolume} theme={theme} zoomQueues={zoomQueues} />
+          <PerformanceTab manualAgents={manualAgents} stats={stats} hourlyVolume={hourlyVolume} theme={theme} zoomQueues={zoomQueues} sfPipeline={data?.sfPipeline || {}} />
         )}
 
         {/* ── Footer ──────────────────────────────────────────── */}

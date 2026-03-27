@@ -155,6 +155,7 @@ function getPublicState() {
     stats: { ...state.stats, avgHandleTime, longestCall, longestCallAgent: state.longestCallAgent?.name || null, totalCallsHandled: durations.length },
     hourlyVolume: state.hourlyVolume,
     zoomQueues: state.zoomQueues,
+    sfPipeline: state.sfPipeline || {},
     timestamp: Date.now(),
   };
 }
@@ -675,6 +676,81 @@ async function pollPresence() {
 setTimeout(pollPresence, 5000);
 setInterval(pollPresence, 60 * 1000);
 console.log("[Presence] Polling enabled — every 60s");
+
+// ─── Salesforce Pipeline Polling ──────────────────────────────────────────────
+
+async function sfQuery(query) {
+  if (!sfAccessToken) await getSfAccessToken();
+  const url = `${process.env.SF_INSTANCE_URL}/services/data/v59.0/query?q=${encodeURIComponent(query)}`;
+  let res = await fetch(url, { headers: { Authorization: `Bearer ${sfAccessToken}` } });
+  if (res.status === 401) {
+    await getSfAccessToken();
+    res = await fetch(url, { headers: { Authorization: `Bearer ${sfAccessToken}` } });
+  }
+  return res.json();
+}
+
+async function pollSfPipeline() {
+  try {
+    if (!process.env.SF_CLIENT_ID || !process.env.SF_REFRESH_TOKEN) return;
+
+    // 1. Applied today
+    const appliedData = await sfQuery(`SELECT COUNT(Id) total FROM Contact WHERE Applied_Date__c = TODAY`);
+    const appliedToday = appliedData.records?.[0]?.total || 0;
+
+    // 2. Enrolled today
+    const enrolledData = await sfQuery(`SELECT COUNT(Id) total FROM Contact WHERE Enrolled_Date__c = TODAY`);
+    const enrolledToday = enrolledData.records?.[0]?.total || 0;
+
+    // 3. Avg days from applied to enrolled (last 30 days)
+    const recentData = await sfQuery(`SELECT Applied_Date__c, Enrolled_Date__c FROM Contact WHERE Enrolled_Date__c = LAST_N_DAYS:30 AND Applied_Date__c != null LIMIT 200`);
+    let avgDaysToEnroll = 0;
+    if (recentData.records?.length > 0) {
+      const days = recentData.records.map(r => {
+        const applied = new Date(r.Applied_Date__c).getTime();
+        const enrolled = new Date(r.Enrolled_Date__c).getTime();
+        return Math.max(0, Math.round((enrolled - applied) / (1000 * 60 * 60 * 24)));
+      });
+      avgDaysToEnroll = Math.round(days.reduce((a, b) => a + b, 0) / days.length);
+    }
+
+    // 4. Conversion rate (enrolled / applied) for recent period
+    const applied30Data = await sfQuery(`SELECT COUNT(Id) total FROM Contact WHERE Applied_Date__c = LAST_N_DAYS:30`);
+    const enrolled30Data = await sfQuery(`SELECT COUNT(Id) total FROM Contact WHERE Enrolled_Date__c = LAST_N_DAYS:30`);
+    const applied30 = applied30Data.records?.[0]?.total || 0;
+    const enrolled30 = enrolled30Data.records?.[0]?.total || 0;
+    const conversionRate30 = applied30 > 0 ? Math.round((enrolled30 / applied30) * 100) : 0;
+
+    // 5. Pipeline status counts (individual queries since GROUP BY doesn't work)
+    const statusCounts = {};
+    for (const status of ['Applied', 'Enrolled', 'Inquiry', 'Accepted', 'Withdrawn', 'Denied']) {
+      try {
+        const d = await sfQuery(`SELECT COUNT(Id) total FROM Contact WHERE Admission_Status__c = '${status}' AND Applied_Date__c = LAST_N_DAYS:90`);
+        statusCounts[status] = d.records?.[0]?.total || 0;
+      } catch { statusCounts[status] = 0; }
+    }
+
+    state.sfPipeline = {
+      appliedToday,
+      enrolledToday,
+      avgDaysToEnroll,
+      conversionRate30,
+      applied30,
+      enrolled30,
+      statusCounts,
+    };
+
+    broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+    console.log(`[SF Pipeline] applied=${appliedToday}, enrolled=${enrolledToday}, avgDays=${avgDaysToEnroll}, conv30=${conversionRate30}%`);
+  } catch (e) {
+    console.log('[SF Pipeline] error:', e.message);
+    sfAccessToken = null;
+  }
+}
+
+setTimeout(pollSfPipeline, 20000);
+setInterval(pollSfPipeline, 5 * 60 * 1000); // every 5 min
+console.log('[SF Pipeline] Polling enabled — every 5 min');
 
 // ─── Salesforce Great Call Polling ────────────────────────────────────────────
 
