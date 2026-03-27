@@ -694,7 +694,7 @@ export default function App() {
           background: t.headerBg,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <img src="/iteach-logo.png" alt="iTeach" style={{ height: 32 }} />
+            <img src={theme === "light" ? "/iteach-logo-light.png" : "/iteach-logo.png"} alt="iTeach" style={{ height: 32 }} />
             <div style={{ borderLeft: `1px solid ${t.divider}`, paddingLeft: 12 }}>
               <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", color: t.text }}>Support Center Command</div>
               <div style={{ fontSize: 8, letterSpacing: 3, color: t.textFaint, textTransform: "uppercase" }}>Live Operations Dashboard</div>
