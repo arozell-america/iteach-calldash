@@ -143,9 +143,9 @@ function KpiTile({ label, value, sub, color, size = "normal", theme }) {
   return (
     <div style={{
       flex: 1, minWidth: isLarge ? 150 : 110,
-      background: t.tileBg, border: `1px solid ${color}${t.tileBorder}`,
+      background: t.tileBg, border: `1.5px solid ${color}55`,
       borderRadius: 12, padding: isLarge ? "14px 16px" : "10px 12px",
-      borderLeft: `3px solid ${color}`,
+      boxShadow: `0 0 12px ${color}22, inset 0 0 12px ${color}08`,
     }}>
       <div style={{ fontSize: 9, letterSpacing: 2, color: t.textMuted, textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: isLarge ? 30 : 22, fontWeight: 700, color, fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>{value}</div>
