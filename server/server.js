@@ -429,11 +429,74 @@ app.get('/api/debug-powerpack', async (req, res) => {
 app.get('/api/debug-sf', async (req, res) => {
   try {
     if (!sfAccessToken) await getSfAccessToken();
-    const query = `SELECT Id, Great_Call__c, LastModifiedBy.Name FROM Contact WHERE Great_Call__c = TODAY LIMIT 10`;
-    const url = `${process.env.SF_INSTANCE_URL}/services/data/v59.0/query?q=${encodeURIComponent(query)}`;
-    const r = await fetch(url, { headers: { Authorization: `Bearer ${sfAccessToken}` } });
-    const data = await r.json();
-    res.json(data);
+    const auth = { headers: { Authorization: `Bearer ${sfAccessToken}` } };
+    const baseUrl = process.env.SF_INSTANCE_URL + '/services/data/v59.0';
+    const results = {};
+
+    // 1. Find fields related to admissions/enrollment on Contact
+    try {
+      const q1 = `SELECT Id, Name, Applied_Date__c, Enrolled_Date__c, Admission_Status__c, Great_Call__c, CreatedDate FROM Contact WHERE Applied_Date__c != null ORDER BY CreatedDate DESC LIMIT 5`;
+      const r1 = await fetch(`${baseUrl}/query?q=${encodeURIComponent(q1)}`, auth);
+      results.contact_sample = await r1.json();
+    } catch(e) { results.contact_sample = { error: e.message }; }
+
+    // 2. Check field names - try common variations
+    try {
+      const q2 = `SELECT Id, Name, Applied_Date__c, Enrolled_Date__c, Admission_Status__c FROM Contact WHERE Admission_Status__c != null ORDER BY CreatedDate DESC LIMIT 5`;
+      const r2 = await fetch(`${baseUrl}/query?q=${encodeURIComponent(q2)}`, auth);
+      results.admission_status_sample = await r2.json();
+    } catch(e) { results.admission_status_sample = { error: e.message }; }
+
+    // 3. Check for enrollment opportunity
+    try {
+      const q3 = `SELECT Id, Name FROM Enrollment_Opportunity__c LIMIT 1`;
+      const r3 = await fetch(`${baseUrl}/query?q=${encodeURIComponent(q3)}`, auth);
+      results.enrollment_opp = await r3.json();
+    } catch(e) { results.enrollment_opp = { error: e.message }; }
+
+    // 4. Check for iteach application
+    try {
+      const q4 = `SELECT Id, Name FROM iteach_Application__c LIMIT 1`;
+      const r4 = await fetch(`${baseUrl}/query?q=${encodeURIComponent(q4)}`, auth);
+      results.iteach_app = await r4.json();
+    } catch(e) { results.iteach_app = { error: e.message }; }
+
+    // 5. Today's pipeline stats
+    try {
+      const q5 = `SELECT Admission_Status__c, COUNT(Id) total FROM Contact WHERE Applied_Date__c = TODAY GROUP BY Admission_Status__c`;
+      const r5 = await fetch(`${baseUrl}/query?q=${encodeURIComponent(q5)}`, auth);
+      results.today_status_breakdown = await r5.json();
+    } catch(e) { results.today_status_breakdown = { error: e.message }; }
+
+    // 6. Enrolled today
+    try {
+      const q6 = `SELECT COUNT(Id) total FROM Contact WHERE Enrolled_Date__c = TODAY`;
+      const r6 = await fetch(`${baseUrl}/query?q=${encodeURIComponent(q6)}`, auth);
+      results.enrolled_today = await r6.json();
+    } catch(e) { results.enrolled_today = { error: e.message }; }
+
+    // 7. Applied today
+    try {
+      const q7 = `SELECT COUNT(Id) total FROM Contact WHERE Applied_Date__c = TODAY`;
+      const r7 = await fetch(`${baseUrl}/query?q=${encodeURIComponent(q7)}`, auth);
+      results.applied_today = await r7.json();
+    } catch(e) { results.applied_today = { error: e.message }; }
+
+    // 8. Avg time applied to enrolled (last 30 days)
+    try {
+      const q8 = `SELECT Applied_Date__c, Enrolled_Date__c FROM Contact WHERE Enrolled_Date__c = LAST_N_DAYS:30 AND Applied_Date__c != null LIMIT 20`;
+      const r8 = await fetch(`${baseUrl}/query?q=${encodeURIComponent(q8)}`, auth);
+      results.recent_enrollments = await r8.json();
+    } catch(e) { results.recent_enrollments = { error: e.message }; }
+
+    // 9. List all Admission_Status__c values
+    try {
+      const q9 = `SELECT Admission_Status__c, COUNT(Id) total FROM Contact WHERE Applied_Date__c = LAST_N_DAYS:90 GROUP BY Admission_Status__c ORDER BY COUNT(Id) DESC`;
+      const r9 = await fetch(`${baseUrl}/query?q=${encodeURIComponent(q9)}`, auth);
+      results.all_statuses = await r9.json();
+    } catch(e) { results.all_statuses = { error: e.message }; }
+
+    res.json(results);
   } catch(e) {
     res.json({ error: e.message });
   }
