@@ -655,7 +655,7 @@ function PerformanceTab({ manualAgents, stats, hourlyVolume, theme, zoomQueues, 
             label="Avg Calls to Enroll"
             value={sfPipeline.avgCallsBeforeEnroll ? sfPipeline.avgCallsBeforeEnroll : "—"}
             color="#038CF1"
-            sub={sfPipeline.enrolledWithCalls ? `${sfPipeline.enrolledWithCalls} of ${sfPipeline.enrolledTotal} matched (30d)` : "Matching calls to enrollments"}
+            sub={sfPipeline.enrolledWithCalls ? `${sfPipeline.enrolledWithCalls} of ${sfPipeline.enrolledTotal} matched (90d)` : "Matching calls to enrollments"}
             theme={theme}
           />
         </div>

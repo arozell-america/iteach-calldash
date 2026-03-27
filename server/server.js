@@ -791,8 +791,8 @@ async function computeCallsBeforeEnrollment() {
     if (!process.env.SF_CLIENT_ID || !process.env.SF_REFRESH_TOKEN) return;
     if (!ZOOM_ACCOUNT_ID || !ZOOM_CLIENT_ID || !ZOOM_CLIENT_SECRET) return;
 
-    // 1. Get recently enrolled contacts with phone numbers (last 30 days)
-    const sfData = await sfQuery(`SELECT Id, Name, Phone, MobilePhone, Applied_Date__c, Enrolled_Date__c FROM Contact WHERE Enrolled_Date__c = LAST_N_DAYS:30 AND (Phone != null OR MobilePhone != null) LIMIT 200`);
+    // 1. Get recently enrolled contacts with phone numbers (last 90 days)
+    const sfData = await sfQuery(`SELECT Id, Name, Phone, MobilePhone, Applied_Date__c, Enrolled_Date__c FROM Contact WHERE Enrolled_Date__c = LAST_N_DAYS:90 AND (Phone != null OR MobilePhone != null) LIMIT 500`);
     const enrolledContacts = sfData.records || [];
     if (enrolledContacts.length === 0) { state.sfPipeline.avgCallsBeforeEnroll = 0; return; }
 
@@ -805,25 +805,28 @@ async function computeCallsBeforeEnrollment() {
       }
     }
 
-    // 2. Fetch Zoom call history for last 30 days (paginated)
+    // 2. Fetch Zoom call history for last 90 days (Zoom API allows 30 days per request, so split into 3 chunks)
     const token = await getZoomToken();
     if (!token) return;
-    const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const to = new Date().toISOString().slice(0, 10);
     let allCalls = [];
-    let nextPage = '';
-    let pages = 0;
-    do {
-      const url = `https://api.zoom.us/v2/phone/call_history?from=${from}&to=${to}&page_size=100&type=all` + (nextPage ? `&next_page_token=${nextPage}` : '');
-      const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
-      if (!r.ok) break;
-      const d = await r.json();
-      allCalls = allCalls.concat(d.call_logs || d.call_history || []);
-      nextPage = d.next_page_token || '';
-      pages++;
-      if (pages > 50) break; // safety limit
-      if (nextPage) await new Promise(r => setTimeout(r, 100)); // rate limit courtesy
-    } while (nextPage);
+    for (let chunk = 0; chunk < 3; chunk++) {
+      const chunkFrom = new Date(Date.now() - (chunk + 1) * 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const chunkTo = new Date(Date.now() - chunk * 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      let nextPage = '';
+      let pages = 0;
+      do {
+        const url = `https://api.zoom.us/v2/phone/call_history?from=${chunkFrom}&to=${chunkTo}&page_size=100&type=all` + (nextPage ? `&next_page_token=${nextPage}` : '');
+        const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+        if (!r.ok) break;
+        const d = await r.json();
+        allCalls = allCalls.concat(d.call_logs || d.call_history || []);
+        nextPage = d.next_page_token || '';
+        pages++;
+        if (pages > 100) break;
+        if (nextPage) await new Promise(r => setTimeout(r, 100));
+      } while (nextPage);
+      console.log(`[CallsToEnroll] Chunk ${chunk + 1}/3 (${chunkFrom} to ${chunkTo}): ${pages} pages fetched`);
+    }
 
     // 3. Match calls to enrolled contacts
     for (const call of allCalls) {
@@ -862,10 +865,10 @@ async function computeCallsBeforeEnrollment() {
 }
 
 setTimeout(pollSfPipeline, 20000);
-setTimeout(computeCallsBeforeEnrollment, 30000);
+setTimeout(computeCallsBeforeEnrollment, 60000); // run 1 min after startup
 setInterval(pollSfPipeline, 5 * 60 * 1000);
-setInterval(computeCallsBeforeEnrollment, 15 * 60 * 1000);
-console.log('[SF Pipeline] Polling enabled — pipeline every 5 min, calls-to-enroll every 15 min');
+setInterval(computeCallsBeforeEnrollment, 24 * 60 * 60 * 1000); // once per day
+console.log('[SF Pipeline] Polling enabled — pipeline every 5 min, calls-to-enroll once daily');
 
 // ─── Salesforce Great Call Polling ────────────────────────────────────────────
 
