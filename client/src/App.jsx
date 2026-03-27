@@ -258,13 +258,13 @@ function AgentCard({ agent, tick, expanded, theme }) {
 
         {/* Name + team + status */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: t.text, lineHeight: 1.2 }}>{firstName}</span>
-            {lastName && <span style={{ fontSize: 11, fontWeight: 400, color: t.textMuted }}>{lastName}</span>}
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+            <span style={{ fontSize: 22, fontWeight: 700, color: t.text, lineHeight: 1.2 }}>{firstName}</span>
+            {lastName && <span style={{ fontSize: 14, fontWeight: 400, color: t.textMuted }}>{lastName}</span>}
           </div>
-          <div style={{ fontSize: 10, color: t.textMuted, marginTop: 1 }}>{agent.team}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: alertDotColor || cfg.color }}>{cfg.label}</span>
+          <div style={{ fontSize: 13, color: t.textMuted, marginTop: 2 }}>{agent.team}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: alertDotColor || cfg.color }}>{cfg.label}</span>
             {direction && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 8, fontWeight: 700, color: dirColor, background: dirColor + "20", borderRadius: 4, padding: "2px 5px" }}>
                 <svg width="8" height="8" viewBox="0 0 8 8" style={{ transform: direction === "inbound" ? "rotate(135deg)" : "rotate(-45deg)" }}>
@@ -279,9 +279,9 @@ function AgentCard({ agent, tick, expanded, theme }) {
         {/* Right side: elapsed or status label */}
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           {elapsed ? (
-            <span style={{ fontSize: 16, fontWeight: 700, color: alertDotColor || cfg.color, fontFamily: "'DM Mono', monospace" }}>{elapsed}</span>
+            <span style={{ fontSize: 22, fontWeight: 700, color: alertDotColor || cfg.color, fontFamily: "'DM Mono', monospace" }}>{elapsed}</span>
           ) : (
-            <span style={{ fontSize: 11, fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
           )}
         </div>
       </div>
@@ -313,13 +313,21 @@ function StatusChips({ manualAgents, statusFilter, setStatusFilter, theme }) {
     { key: "offline", label: "Offline", dot: "#94A3B8", icon: null },
   ];
 
+  const toggleFilter = (key) => {
+    setStatusFilter(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
   return (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
       {chips.map(chip => {
-        const count = manualAgents.filter(a => chip.key === "offline" ? a.status === "offline" : a.status === chip.key).length;
-        const active = statusFilter === chip.key;
+        const count = manualAgents.filter(a => a.status === chip.key).length;
+        const active = statusFilter.has(chip.key);
         return (
-          <button key={chip.key} onClick={() => setStatusFilter(active ? null : chip.key)} style={{
+          <button key={chip.key} onClick={() => toggleFilter(chip.key)} style={{
             display: "flex", alignItems: "center", gap: 5, padding: "5px 12px",
             borderRadius: 20, border: `1px solid ${active ? chip.dot + "55" : t.cardBorder}`,
             background: active ? chip.dot + "18" : t.chipBg,
@@ -343,7 +351,7 @@ function LiveTab({ manualAgents, tick, stats, zoomQueues, expanded, theme, statu
   const offlineCount = manualAgents.filter(a => a.status === "offline").length;
   const totalActive = manualAgents.length - offlineCount;
 
-  const filtered = statusFilter ? manualAgents.filter(a => a.status === statusFilter) : manualAgents;
+  const filtered = statusFilter.size > 0 ? manualAgents.filter(a => statusFilter.has(a.status)) : manualAgents;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -360,7 +368,7 @@ function LiveTab({ manualAgents, tick, stats, zoomQueues, expanded, theme, statu
       {/* Agent list */}
       {filtered.length === 0 ? (
         <div style={{ padding: "40px 0", textAlign: "center" }}>
-          <div style={{ fontSize: 12, color: t.textFaint }}>{statusFilter ? "No agents with this status" : "No agents registered"}</div>
+          <div style={{ fontSize: 12, color: t.textFaint }}>{statusFilter.size > 0 ? "No agents with this status" : "No agents registered"}</div>
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
@@ -616,7 +624,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("live");
   const [expanded, setExpanded] = useState(false);
   const [theme, setTheme] = useState("dark");
-  const [statusFilter, setStatusFilter] = useState(null);
+  const [statusFilter, setStatusFilter] = useState(new Set());
 
   const t = THEMES[theme];
 
