@@ -143,19 +143,20 @@ function KpiTile({ label, value, sub, color, size = "normal", theme }) {
   return (
     <div style={{
       flex: 1, minWidth: isLarge ? 150 : 110,
-      background: t.tileBg,
       borderRadius: 12, padding: isLarge ? "14px 16px" : "10px 12px",
       position: "relative", overflow: "hidden",
-      border: "1.5px solid transparent",
-      backgroundClip: "padding-box",
+      background: t.tileBg,
+      border: `1px solid ${theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"}`,
     }}>
-      {/* Gradient border overlay */}
+      {/* Left accent glow */}
       <div style={{
-        position: "absolute", inset: -1.5, borderRadius: 13, pointerEvents: "none",
-        background: `linear-gradient(to right, ${color}, ${color}44 50%, transparent 100%)`,
-        mask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
-        maskComposite: "exclude", WebkitMaskComposite: "xor",
-        padding: 1.5,
+        position: "absolute", top: 0, left: 0, bottom: 0, width: 3,
+        background: color, borderRadius: "12px 0 0 12px",
+      }} />
+      <div style={{
+        position: "absolute", top: 0, left: 0, bottom: 0, width: "60%",
+        background: `linear-gradient(to right, ${color}20, transparent)`,
+        pointerEvents: "none",
       }} />
       <div style={{ fontSize: 9, letterSpacing: 2, color: t.textMuted, textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: isLarge ? 30 : 22, fontWeight: 700, color, fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>{value}</div>
