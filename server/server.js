@@ -497,6 +497,36 @@ app.get('/api/debug-sf', async (req, res) => {
       results.all_statuses = await r9.json();
     } catch(e) { results.all_statuses = { error: e.message }; }
 
+    // 10. Check phone fields on Contact
+    try {
+      const q10 = `SELECT Id, Name, Phone, MobilePhone, HomePhone, OtherPhone, Enrolled_Date__c FROM Contact WHERE Enrolled_Date__c = LAST_N_DAYS:7 AND (Phone != null OR MobilePhone != null) LIMIT 5`;
+      const r10 = await fetch(`${baseUrl}/query?q=${encodeURIComponent(q10)}`, auth);
+      results.enrolled_with_phones = await r10.json();
+    } catch(e) { results.enrolled_with_phones = { error: e.message }; }
+
+    // 11. Sample of Zoom call history with phone numbers
+    try {
+      results.zoom_call_sample = state.zoomQueues; // already have this
+      // Also check current call history cache
+      const token = await getZoomToken();
+      if (token) {
+        const today = new Date().toISOString().slice(0, 10);
+        const r11 = await fetch(`https://api.zoom.us/v2/phone/call_history?from=${today}&to=${today}&page_size=5&type=all`, { headers: { Authorization: 'Bearer ' + token } });
+        if (r11.ok) {
+          const d11 = await r11.json();
+          results.zoom_calls_sample = (d11.call_logs || []).map(c => ({
+            direction: c.direction,
+            caller_number: c.caller_did_number,
+            callee_number: c.callee_did_number,
+            caller_name: c.caller_name,
+            callee_name: c.callee_name,
+            call_result: c.call_result,
+            duration: c.duration,
+          }));
+        }
+      }
+    } catch(e) { results.zoom_calls_sample = { error: e.message }; }
+
     res.json(results);
   } catch(e) {
     res.json({ error: e.message });
