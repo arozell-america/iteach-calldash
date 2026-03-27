@@ -143,10 +143,20 @@ function KpiTile({ label, value, sub, color, size = "normal", theme }) {
   return (
     <div style={{
       flex: 1, minWidth: isLarge ? 150 : 110,
-      background: t.tileBg, border: `1.5px solid ${color}55`,
+      background: t.tileBg,
       borderRadius: 12, padding: isLarge ? "14px 16px" : "10px 12px",
-      boxShadow: `0 0 12px ${color}22, inset 0 0 12px ${color}08`,
+      position: "relative", overflow: "hidden",
+      border: "1.5px solid transparent",
+      backgroundClip: "padding-box",
     }}>
+      {/* Gradient border overlay */}
+      <div style={{
+        position: "absolute", inset: -1.5, borderRadius: 13, pointerEvents: "none",
+        background: `linear-gradient(to right, ${color}, ${color}44 50%, transparent 100%)`,
+        mask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+        maskComposite: "exclude", WebkitMaskComposite: "xor",
+        padding: 1.5,
+      }} />
       <div style={{ fontSize: 9, letterSpacing: 2, color: t.textMuted, textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: isLarge ? 30 : 22, fontWeight: 700, color, fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>{value}</div>
       {sub && <div style={{ fontSize: 10, color: t.textFaint, marginTop: 3 }}>{sub}</div>}
