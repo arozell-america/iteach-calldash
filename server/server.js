@@ -730,7 +730,7 @@ async function pollCallQueues() {
     let queueDetails = [];
     try {
       const today = new Date().toISOString().slice(0, 10);
-      const metricsUrl = `https://api.zoom.us/v2/phone/metrics/call_queues?from=${today}&to=${today}&page_size=100`;
+      const metricsUrl = `https://api.zoom.us/v2/phone/call_queues/metrics?from=${today}&to=${today}&page_size=100`;
       const mr = await fetch(metricsUrl, { headers: { Authorization: 'Bearer ' + token } });
       if (mr.ok) {
         const metricsData = await mr.json();
@@ -768,30 +768,7 @@ async function pollCallQueues() {
       console.log('[Queues] Power Pack metrics error:', me.message);
     }
 
-    // 3. Power Pack: call quality metrics
     let callQuality = { mos: 0, jitter: 0, latency: 0, packetLoss: 0 };
-    try {
-      const today = new Date().toISOString().slice(0, 10);
-      const qosUrl = `https://api.zoom.us/v2/phone/metrics/quality?from=${today}&to=${today}&type=1`;
-      const qr = await fetch(qosUrl, { headers: { Authorization: 'Bearer ' + token } });
-      if (qr.ok) {
-        const qosData = await qr.json();
-        if (qosData.quality_scores || qosData.audio) {
-          const scores = qosData.quality_scores || qosData.audio || qosData;
-          callQuality = {
-            mos: scores.avg_mos || scores.mos || 0,
-            jitter: scores.avg_jitter || scores.jitter || 0,
-            latency: scores.avg_latency || scores.latency || 0,
-            packetLoss: scores.avg_packet_loss || scores.packet_loss || 0,
-          };
-        }
-        console.log(`[Queues] Call quality: MOS=${callQuality.mos}, jitter=${callQuality.jitter}ms, latency=${callQuality.latency}ms`);
-      } else {
-        console.log('[Queues] Call quality not available:', qr.status);
-      }
-    } catch (qe) {
-      console.log('[Queues] Call quality error:', qe.message);
-    }
 
     state.zoomQueues = {
       totalWaiting, avgWaitTime, avgSpeedToAnswer, abandonmentRate,
