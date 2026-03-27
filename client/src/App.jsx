@@ -186,9 +186,9 @@ function QueueHealthBanner({ zoomQueues, onCallCount, availableCount, theme, tim
   const waiting = zoomQueues.totalWaiting || 0;
 
   let level, label, dotColor;
-  if (waiting > 5 || (availableCount === 0 && onCallCount > 0)) {
+  if (waiting > 5 || (availableCount === 0 && onCallCount > 0 && waiting > 0)) {
     level = "red"; label = "QUEUE BACKING UP"; dotColor = "#EF4444";
-  } else if (waiting > 2 || availableCount <= 1) {
+  } else if (waiting > 2 || (onCallCount > 0 && availableCount <= 1 && waiting > 0)) {
     level = "yellow"; label = "HIGH CALL VOLUME"; dotColor = "#F59E0B";
   } else {
     level = "green"; label = "OPERATING NORMALLY"; dotColor = "#22C55E";
@@ -242,57 +242,60 @@ function AgentCard({ agent, tick, expanded, theme }) {
 
   return (
     <div style={{
-      padding: "14px 18px", borderRadius: 12,
+      padding: "12px 14px", borderRadius: 12,
       background: cardBg, border: `1px solid ${cardBorder}`,
-      display: "flex", alignItems: "center", gap: 14,
+      display: "flex", flexDirection: "column", gap: expanded ? 8 : 0,
       transition: "all 0.3s ease",
     }}>
-      {/* Status dot */}
-      <div style={{
-        width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
-        background: dotColor, boxShadow: isActive ? `0 0 10px ${dotColor}88` : "none",
-        animation: cfg.pulse ? "pulse 2s infinite" : "none",
-      }} />
+      {/* Main row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {/* Status dot */}
+        <div style={{
+          width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
+          background: dotColor, boxShadow: isActive ? `0 0 10px ${dotColor}88` : "none",
+          animation: cfg.pulse ? "pulse 2s infinite" : "none",
+        }} />
 
-      {/* Name + team + status */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-          <span style={{ fontSize: 18, fontWeight: 700, color: t.text, lineHeight: 1.2 }}>{firstName}</span>
-          {lastName && <span style={{ fontSize: 13, fontWeight: 400, color: t.textMuted }}>{lastName}</span>}
+        {/* Name + team + status */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: t.text, lineHeight: 1.2 }}>{firstName}</span>
+            {lastName && <span style={{ fontSize: 11, fontWeight: 400, color: t.textMuted }}>{lastName}</span>}
+          </div>
+          <div style={{ fontSize: 10, color: t.textMuted, marginTop: 1 }}>{agent.team}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: alertDotColor || cfg.color }}>{cfg.label}</span>
+            {direction && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 8, fontWeight: 700, color: dirColor, background: dirColor + "20", borderRadius: 4, padding: "2px 5px" }}>
+                <svg width="8" height="8" viewBox="0 0 8 8" style={{ transform: direction === "inbound" ? "rotate(135deg)" : "rotate(-45deg)" }}>
+                  <path d="M1 4L4 1L7 4M4 1V7" stroke={dirColor} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {direction === "inbound" ? "IN" : "OUT"}
+              </span>
+            )}
+          </div>
         </div>
-        <div style={{ fontSize: 11, color: t.textMuted, marginTop: 1 }}>{agent.team}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: alertDotColor || cfg.color }}>{cfg.label}</span>
-          {direction && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 8, fontWeight: 700, color: dirColor, background: dirColor + "20", borderRadius: 4, padding: "2px 6px" }}>
-              <svg width="8" height="8" viewBox="0 0 8 8" style={{ transform: direction === "inbound" ? "rotate(135deg)" : "rotate(-45deg)" }}>
-                <path d="M1 4L4 1L7 4M4 1V7" stroke={dirColor} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              {direction === "inbound" ? "IN" : "OUT"}
-            </span>
+
+        {/* Right side: elapsed or status label */}
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          {elapsed ? (
+            <span style={{ fontSize: 16, fontWeight: 700, color: alertDotColor || cfg.color, fontFamily: "'DM Mono', monospace" }}>{elapsed}</span>
+          ) : (
+            <span style={{ fontSize: 11, fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
           )}
         </div>
       </div>
 
-      {/* Right side: elapsed or status label */}
-      <div style={{ textAlign: "right", flexShrink: 0 }}>
-        {elapsed ? (
-          <span style={{ fontSize: 20, fontWeight: 700, color: alertDotColor || cfg.color, fontFamily: "'DM Mono', monospace" }}>{elapsed}</span>
-        ) : (
-          <span style={{ fontSize: 13, fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
-        )}
-      </div>
-
-      {/* Expanded metrics */}
+      {/* Expanded metrics row */}
       {expanded && (
-        <div style={{ display: "flex", gap: 14, flexShrink: 0, borderLeft: `1px solid ${t.divider}`, paddingLeft: 14 }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 8, color: t.textFaint, textTransform: "uppercase", letterSpacing: 0.5 }}>Calls</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#038CF1", fontFamily: "'DM Mono', monospace" }}>{agent.callsToday || 0}</div>
+        <div style={{ display: "flex", gap: 12, borderTop: `1px solid ${t.divider}`, paddingTop: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 9, color: t.textFaint, textTransform: "uppercase", letterSpacing: 0.5 }}>Calls</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#038CF1", fontFamily: "'DM Mono', monospace" }}>{agent.callsToday || 0}</span>
           </div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 8, color: t.textFaint, textTransform: "uppercase", letterSpacing: 0.5 }}>Longest</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#00BEA8", fontFamily: "'DM Mono', monospace" }}>{agent.longestCallToday ? fmtMins(agent.longestCallToday) : "—"}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 9, color: t.textFaint, textTransform: "uppercase", letterSpacing: 0.5 }}>Longest</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#00BEA8", fontFamily: "'DM Mono', monospace" }}>{agent.longestCallToday ? fmtMins(agent.longestCallToday) : "—"}</span>
           </div>
         </div>
       )}
@@ -360,7 +363,7 @@ function LiveTab({ manualAgents, tick, stats, zoomQueues, expanded, theme, statu
           <div style={{ fontSize: 12, color: t.textFaint }}>{statusFilter ? "No agents with this status" : "No agents registered"}</div>
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
           {filtered.map(agent => <AgentCard key={agent.id} agent={agent} tick={tick} expanded={expanded} theme={theme} />)}
         </div>
       )}
