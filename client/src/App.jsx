@@ -229,11 +229,16 @@ function AgentCard({ agent, tick, expanded, theme }) {
   const direction = agent.callDirection;
   const dirColor = direction === "inbound" ? "#00BEA8" : "#038CF1";
 
+  const isMeeting = agent.status === "meeting";
+
   let cardBg, cardBorder;
   if (isCritical) {
     cardBg = t.alertBg; cardBorder = t.alertBorderColor;
   } else if (isLong) {
     cardBg = t.warnBg; cardBorder = t.warnBorderColor;
+  } else if (isMeeting) {
+    cardBg = theme === "dark" ? "rgba(167,139,250,0.12)" : "rgba(167,139,250,0.08)";
+    cardBorder = "rgba(167,139,250,0.30)";
   } else if (isActive) {
     cardBg = t.cardActiveBg; cardBorder = t.cardActiveBorder;
   } else {
@@ -244,6 +249,7 @@ function AgentCard({ agent, tick, expanded, theme }) {
     <div style={{
       padding: "12px 14px", borderRadius: 12,
       background: cardBg, border: `1px solid ${cardBorder}`,
+      borderLeft: isActive || isMeeting ? `3px solid ${alertDotColor || cfg.color}` : `1px solid ${cardBorder}`,
       display: "flex", flexDirection: "column", gap: expanded ? 8 : 0,
       transition: "all 0.3s ease",
     }}>
