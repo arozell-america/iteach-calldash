@@ -384,6 +384,38 @@ app.get('/api/debug-queues', async (req, res) => {
   } catch(e) { res.json({ error: e.message }); }
 });
 
+app.get('/api/debug-powerpack', async (req, res) => {
+  try {
+    const token = await getZoomToken();
+    if (!token) return res.json({ error: 'No Zoom token' });
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Test metrics endpoint
+    const metricsUrl = `https://api.zoom.us/v2/phone/metrics/call_queues?from=${today}&to=${today}&page_size=100`;
+    const mr = await fetch(metricsUrl, { headers: { Authorization: 'Bearer ' + token } });
+    const metricsBody = await mr.text();
+    let metricsJson;
+    try { metricsJson = JSON.parse(metricsBody); } catch { metricsJson = metricsBody; }
+
+    // Test quality endpoint
+    const qosUrl = `https://api.zoom.us/v2/phone/metrics/quality?from=${today}&to=${today}&type=1`;
+    const qr = await fetch(qosUrl, { headers: { Authorization: 'Bearer ' + token } });
+    const qosBody = await qr.text();
+    let qosJson;
+    try { qosJson = JSON.parse(qosBody); } catch { qosJson = qosBody; }
+
+    // Current state
+    res.json({
+      metricsStatus: mr.status,
+      metricsData: metricsJson,
+      qualityStatus: qr.status,
+      qualityData: qosJson,
+      currentZoomQueues: state.zoomQueues,
+      tokenOk: !!token,
+    });
+  } catch(e) { res.json({ error: e.message }); }
+});
+
 app.get('/api/debug-sf', async (req, res) => {
   try {
     if (!sfAccessToken) await getSfAccessToken();
