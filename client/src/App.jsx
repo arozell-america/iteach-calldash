@@ -508,7 +508,7 @@ function AgentPerfRow({ agent, theme }) {
   );
 }
 
-function PerformanceTab({ manualAgents, stats, hourlyVolume, theme }) {
+function PerformanceTab({ manualAgents, stats, hourlyVolume, theme, zoomQueues }) {
   const t = THEMES[theme];
   const totalEnrollments = manualAgents.reduce((sum, a) => sum + (a.enrollmentsToday || 0), 0);
   const totalGreatCalls = manualAgents.reduce((sum, a) => sum + (a.greatCallsToday || 0), 0);
@@ -535,8 +535,8 @@ function PerformanceTab({ manualAgents, stats, hourlyVolume, theme }) {
               <KpiTile label="Enrollments" value={totalEnrollments} color="#00BEA8" sub={`${stats.applicationsToday || 0} applications`} theme={theme} />
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <PlaceholderKpi label="Abandonment Rate" sub="Needs Zoom Power Pack" theme={theme} />
-              <PlaceholderKpi label="Avg Speed to Answer" sub="Needs Zoom Power Pack" theme={theme} />
+              <KpiTile label="Abandonment Rate" value={zoomQueues.abandonmentRate != null ? `${zoomQueues.abandonmentRate}%` : "—"} color={zoomQueues.abandonmentRate > 10 ? "#FF3B5C" : zoomQueues.abandonmentRate > 5 ? "#FFB800" : "#22C55E"} sub="Calls abandoned today" theme={theme} />
+              <KpiTile label="Avg Speed to Answer" value={zoomQueues.avgSpeedToAnswer ? fmtMins(zoomQueues.avgSpeedToAnswer) : "—"} color={zoomQueues.avgSpeedToAnswer > 60 ? "#FF3B5C" : zoomQueues.avgSpeedToAnswer > 30 ? "#FFB800" : "#22C55E"} sub="Time to pick up" theme={theme} />
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -766,7 +766,7 @@ export default function App() {
         {activeTab === "live" ? (
           <LiveTab manualAgents={manualAgents} tick={tick} stats={stats} zoomQueues={zoomQueues} expanded={expanded} theme={theme} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />
         ) : (
-          <PerformanceTab manualAgents={manualAgents} stats={stats} hourlyVolume={hourlyVolume} theme={theme} />
+          <PerformanceTab manualAgents={manualAgents} stats={stats} hourlyVolume={hourlyVolume} theme={theme} zoomQueues={zoomQueues} />
         )}
 
         {/* ── Footer ──────────────────────────────────────────── */}

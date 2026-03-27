@@ -52,7 +52,7 @@ const state = {
   hourlyVolume: new Array(24).fill(0),
   callDurations: [],
   longestCallAgent: null,
-  zoomQueues: { totalWaiting: 0, avgWaitTime: 0, queues: [] },
+  zoomQueues: { totalWaiting: 0, avgWaitTime: 0, avgSpeedToAnswer: 0, abandonmentRate: 0, serviceLevel: 0, queues: [] },
 };
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
@@ -660,7 +660,7 @@ async function pollCallQueues() {
   if (!token) return;
 
   try {
-    // Fetch all queue pages — filter to iteach site queues
+    // Fetch all queue pages
     let allQueues = [];
     let nextPageToken = '';
     do {
@@ -674,11 +674,43 @@ async function pollCallQueues() {
 
     const active = allQueues.filter(q => q.status === 'active');
     const totalWaiting = active.reduce((sum, q) => sum + (q.overflowed_calls || 0), 0);
-    const avgWaitTime = 0; // Not available from list endpoint
+
+    // Power Pack: fetch queue analytics for today
+    let avgWaitTime = 0, avgSpeedToAnswer = 0, abandonmentRate = 0, serviceLevel = 0;
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const metricsUrl = `https://api.zoom.us/v2/phone/metrics/call_queues?from=${today}&to=${today}&page_size=100`;
+      const mr = await fetch(metricsUrl, { headers: { Authorization: 'Bearer ' + token } });
+      if (mr.ok) {
+        const metricsData = await mr.json();
+        const queues = metricsData.call_queues || [];
+        if (queues.length > 0) {
+          const totalCalls = queues.reduce((s, q) => s + (q.total_calls || 0), 0);
+          const totalAbandoned = queues.reduce((s, q) => s + (q.abandoned_calls || 0), 0);
+          const totalAnswered = queues.reduce((s, q) => s + (q.answered_calls || 0), 0);
+          const waitTimeSum = queues.reduce((s, q) => s + (q.avg_wait_time || 0) * (q.total_calls || 0), 0);
+          const asaSum = queues.reduce((s, q) => s + (q.avg_answer_time || q.avg_speed_of_answer || 0) * (q.answered_calls || 0), 0);
+          const slSum = queues.reduce((s, q) => s + (q.service_level || 0), 0);
+
+          avgWaitTime = totalCalls > 0 ? Math.round(waitTimeSum / totalCalls) : 0;
+          avgSpeedToAnswer = totalAnswered > 0 ? Math.round(asaSum / totalAnswered) : 0;
+          abandonmentRate = totalCalls > 0 ? Math.round((totalAbandoned / totalCalls) * 100) : 0;
+          serviceLevel = queues.length > 0 ? Math.round(slSum / queues.length) : 0;
+        }
+        console.log(`[Queues] Power Pack metrics: ASA=${avgSpeedToAnswer}s, abandon=${abandonmentRate}%, SL=${serviceLevel}%`);
+      } else {
+        console.log('[Queues] Power Pack metrics not available:', mr.status, await mr.text().catch(() => ''));
+      }
+    } catch (me) {
+      console.log('[Queues] Power Pack metrics error:', me.message);
+    }
 
     state.zoomQueues = {
       totalWaiting,
       avgWaitTime,
+      avgSpeedToAnswer,
+      abandonmentRate,
+      serviceLevel,
       queues: active.map(q => ({
         id: q.id, name: q.name,
         waiting: q.overflowed_calls || 0,
