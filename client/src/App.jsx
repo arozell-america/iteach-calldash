@@ -276,14 +276,12 @@ function AgentCard({ agent, tick, expanded, theme }) {
           </div>
         </div>
 
-        {/* Right side: elapsed or status label */}
-        <div style={{ textAlign: "right", flexShrink: 0 }}>
-          {elapsed ? (
+        {/* Right side: call timer only when on a call */}
+        {elapsed && (
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
             <span style={{ fontSize: 22, fontWeight: 700, color: alertDotColor || cfg.color, fontFamily: "'DM Mono', monospace" }}>{elapsed}</span>
-          ) : (
-            <span style={{ fontSize: 14, fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Expanded metrics row */}
