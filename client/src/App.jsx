@@ -652,10 +652,10 @@ function PerformanceTab({ manualAgents, stats, hourlyVolume, theme, zoomQueues, 
             theme={theme}
           />
           <KpiTile
-            label="Calls per Enrollment"
-            value={totalEnrollments > 0 ? ((stats.callsToday || 0) / totalEnrollments).toFixed(1) : "—"}
+            label="Avg Calls to Enroll"
+            value={sfPipeline.avgCallsBeforeEnroll ? sfPipeline.avgCallsBeforeEnroll : "—"}
             color="#038CF1"
-            sub={totalEnrollments > 0 ? `${stats.callsToday} calls / ${totalEnrollments} enrolled` : "No enrollments yet"}
+            sub={sfPipeline.enrolledWithCalls ? `${sfPipeline.enrolledWithCalls} of ${sfPipeline.enrolledTotal} matched (30d)` : "Matching calls to enrollments"}
             theme={theme}
           />
         </div>

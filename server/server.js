@@ -778,9 +778,94 @@ async function pollSfPipeline() {
   }
 }
 
+// Normalize phone to last 10 digits for matching
+function normalizePhone(phone) {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  return digits.length >= 10 ? digits.slice(-10) : null;
+}
+
+// Compute avg calls before enrollment by matching Zoom call history to SF enrolled contacts
+async function computeCallsBeforeEnrollment() {
+  try {
+    if (!process.env.SF_CLIENT_ID || !process.env.SF_REFRESH_TOKEN) return;
+    if (!ZOOM_ACCOUNT_ID || !ZOOM_CLIENT_ID || !ZOOM_CLIENT_SECRET) return;
+
+    // 1. Get recently enrolled contacts with phone numbers (last 30 days)
+    const sfData = await sfQuery(`SELECT Id, Name, Phone, MobilePhone, Applied_Date__c, Enrolled_Date__c FROM Contact WHERE Enrolled_Date__c = LAST_N_DAYS:30 AND (Phone != null OR MobilePhone != null) LIMIT 200`);
+    const enrolledContacts = sfData.records || [];
+    if (enrolledContacts.length === 0) { state.sfPipeline.avgCallsBeforeEnroll = 0; return; }
+
+    // Build phone-to-contact map
+    const phoneToContact = {};
+    for (const c of enrolledContacts) {
+      const phones = [normalizePhone(c.Phone), normalizePhone(c.MobilePhone)].filter(Boolean);
+      for (const p of phones) {
+        if (!phoneToContact[p]) phoneToContact[p] = { name: c.Name, enrolledDate: c.Enrolled_Date__c, appliedDate: c.Applied_Date__c, calls: 0 };
+      }
+    }
+
+    // 2. Fetch Zoom call history for last 30 days (paginated)
+    const token = await getZoomToken();
+    if (!token) return;
+    const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const to = new Date().toISOString().slice(0, 10);
+    let allCalls = [];
+    let nextPage = '';
+    let pages = 0;
+    do {
+      const url = `https://api.zoom.us/v2/phone/call_history?from=${from}&to=${to}&page_size=100&type=all` + (nextPage ? `&next_page_token=${nextPage}` : '');
+      const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+      if (!r.ok) break;
+      const d = await r.json();
+      allCalls = allCalls.concat(d.call_logs || d.call_history || []);
+      nextPage = d.next_page_token || '';
+      pages++;
+      if (pages > 50) break; // safety limit
+      if (nextPage) await new Promise(r => setTimeout(r, 100)); // rate limit courtesy
+    } while (nextPage);
+
+    // 3. Match calls to enrolled contacts
+    for (const call of allCalls) {
+      // Check both caller and callee numbers (inbound = caller is the candidate, outbound = callee is the candidate)
+      const numbers = [
+        normalizePhone(call.caller_did_number),
+        normalizePhone(call.callee_did_number),
+      ].filter(Boolean);
+
+      for (const num of numbers) {
+        if (phoneToContact[num]) {
+          // Only count calls before or on enrollment date
+          const callDate = call.start_time?.slice(0, 10);
+          if (callDate && callDate <= phoneToContact[num].enrolledDate) {
+            phoneToContact[num].calls++;
+          }
+        }
+      }
+    }
+
+    // 4. Compute average
+    const contacts = Object.values(phoneToContact).filter(c => c.calls > 0);
+    const avgCalls = contacts.length > 0 ? (contacts.reduce((s, c) => s + c.calls, 0) / contacts.length).toFixed(1) : 0;
+    const maxCalls = contacts.length > 0 ? Math.max(...contacts.map(c => c.calls)) : 0;
+
+    state.sfPipeline.avgCallsBeforeEnroll = parseFloat(avgCalls);
+    state.sfPipeline.maxCallsBeforeEnroll = maxCalls;
+    state.sfPipeline.enrolledWithCalls = contacts.length;
+    state.sfPipeline.enrolledTotal = enrolledContacts.length;
+
+    broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+    console.log(`[CallsToEnroll] ${contacts.length}/${enrolledContacts.length} matched, avg=${avgCalls} calls, max=${maxCalls}, from ${allCalls.length} call records`);
+  } catch (e) {
+    console.log('[CallsToEnroll] error:', e.message);
+  }
+}
+
 setTimeout(pollSfPipeline, 20000);
-setInterval(pollSfPipeline, 5 * 60 * 1000); // every 5 min
-console.log('[SF Pipeline] Polling enabled — every 5 min');
+setTimeout(computeCallsBeforeEnrollment, 30000);
+setInterval(pollSfPipeline, 5 * 60 * 1000);
+setInterval(computeCallsBeforeEnrollment, 15 * 60 * 1000);
+console.log('[SF Pipeline] Polling enabled — pipeline every 5 min, calls-to-enroll every 15 min');
 
 // ─── Salesforce Great Call Polling ────────────────────────────────────────────
 
