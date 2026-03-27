@@ -389,30 +389,40 @@ app.get('/api/debug-powerpack', async (req, res) => {
     const token = await getZoomToken();
     if (!token) return res.json({ error: 'No Zoom token' });
     const today = new Date().toISOString().slice(0, 10);
+    const auth = { headers: { Authorization: 'Bearer ' + token } };
 
-    // Test metrics endpoint
-    const metricsUrl = `https://api.zoom.us/v2/phone/metrics/call_queues?from=${today}&to=${today}&page_size=100`;
-    const mr = await fetch(metricsUrl, { headers: { Authorization: 'Bearer ' + token } });
-    const metricsBody = await mr.text();
-    let metricsJson;
-    try { metricsJson = JSON.parse(metricsBody); } catch { metricsJson = metricsBody; }
+    // Try multiple possible endpoint paths
+    const endpoints = [
+      { name: 'metrics/call_queues', url: `https://api.zoom.us/v2/phone/metrics/call_queues?from=${today}&to=${today}` },
+      { name: 'call_queues/metrics', url: `https://api.zoom.us/v2/phone/call_queues/metrics?from=${today}&to=${today}` },
+      { name: 'dashboard/phone', url: `https://api.zoom.us/v2/phone/dashboard?from=${today}&to=${today}` },
+      { name: 'phone/reports/call_queues', url: `https://api.zoom.us/v2/phone/reports/call_queues?from=${today}&to=${today}` },
+      { name: 'phone_reports/call_queues', url: `https://api.zoom.us/v2/phone_reports/call_queues?from=${today}&to=${today}` },
+      { name: 'phone/call_history (last 50)', url: `https://api.zoom.us/v2/phone/call_history?from=${today}&to=${today}&page_size=5&type=all` },
+      { name: 'phone/metrics/quality', url: `https://api.zoom.us/v2/phone/metrics/quality?from=${today}&to=${today}` },
+      { name: 'phone/qualitylogs', url: `https://api.zoom.us/v2/phone/quality?from=${today}&to=${today}` },
+    ];
 
-    // Test quality endpoint
-    const qosUrl = `https://api.zoom.us/v2/phone/metrics/quality?from=${today}&to=${today}&type=1`;
-    const qr = await fetch(qosUrl, { headers: { Authorization: 'Bearer ' + token } });
-    const qosBody = await qr.text();
-    let qosJson;
-    try { qosJson = JSON.parse(qosBody); } catch { qosJson = qosBody; }
+    const results = {};
+    for (const ep of endpoints) {
+      try {
+        const r = await fetch(ep.url, auth);
+        const body = await r.text();
+        let json; try { json = JSON.parse(body); } catch { json = body; }
+        results[ep.name] = { status: r.status, data: json };
+      } catch (e) {
+        results[ep.name] = { error: e.message };
+      }
+    }
 
-    // Current state
-    res.json({
-      metricsStatus: mr.status,
-      metricsData: metricsJson,
-      qualityStatus: qr.status,
-      qualityData: qosJson,
-      currentZoomQueues: state.zoomQueues,
-      tokenOk: !!token,
-    });
+    // Also try getting scopes from token info
+    let scopes = null;
+    try {
+      const tr = await fetch('https://api.zoom.us/v2/users/me/token', auth);
+      if (tr.ok) scopes = await tr.json();
+    } catch {}
+
+    res.json({ tokenOk: !!token, scopes, endpoints: results, currentZoomQueues: state.zoomQueues });
   } catch(e) { res.json({ error: e.message }); }
 });
 
