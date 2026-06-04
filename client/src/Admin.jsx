@@ -7,6 +7,13 @@ const TEAMS = [
   "Educational", "Relational", "Engagement", "Certification", "Curriculum",
 ];
 
+const LEAD_FILTERS = {
+  "All": TEAMS,
+  "Educational": ["Admissions", "National Support", "Texas Support", "Engagement"],
+  "Certification": ["Certification"],
+  "Relational": ["Relational"],
+};
+
 const s = {
   page: { fontFamily: "'Poppins', sans-serif", color: "#fff", minHeight: "100vh", background: "linear-gradient(160deg, #110045 0%, #0D1E6B 45%, #043C96 100%)", padding: "20px 24px" },
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 },
@@ -36,6 +43,7 @@ const TEAM_COLORS = {
 export default function Admin() {
   const [agents, setAgents] = useState([]);
   const [search, setSearch] = useState("");
+  const [filterLead, setFilterLead] = useState("All");
   const [filterTeam, setFilterTeam] = useState("All");
   const [toast, setToast] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -108,7 +116,9 @@ export default function Admin() {
     } catch (e) { showToast("Network error"); }
   };
 
+  const leadTeams = LEAD_FILTERS[filterLead] || TEAMS;
   const filtered = agents.filter(a => {
+    if (!leadTeams.includes(a.team)) return false;
     if (filterTeam !== "All" && a.team !== filterTeam) return false;
     if (search && !a.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -175,12 +185,24 @@ export default function Admin() {
         </div>
       )}
 
-      {/* Filters */}
+      {/* Lead Filter */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 10, alignItems: "center" }}>
+        {Object.keys(LEAD_FILTERS).map(lead => (
+          <button key={lead} onClick={() => { setFilterLead(lead); setFilterTeam("All"); }} style={{
+            ...s.btn, padding: "5px 14px", borderRadius: 16,
+            background: filterLead === lead ? "linear-gradient(135deg, #043C96, #038CF1)" : "rgba(255,255,255,0.06)",
+            color: filterLead === lead ? "#fff" : "rgba(255,255,255,0.45)",
+            fontSize: 11, fontWeight: filterLead === lead ? 700 : 400,
+          }}>{lead}</button>
+        ))}
+      </div>
+
+      {/* Search & Team Filter */}
       <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center", flexWrap: "wrap" }}>
         <input style={{ ...s.input, width: 220 }} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name..." />
         <select style={{ ...s.select, width: 160 }} value={filterTeam} onChange={e => setFilterTeam(e.target.value)}>
           <option value="All">All Teams</option>
-          {TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
+          {leadTeams.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
         <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginLeft: 8 }}>{filtered.length} shown</span>
       </div>
