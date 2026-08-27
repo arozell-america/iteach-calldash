@@ -428,7 +428,7 @@ function TargetChip({ kind, label, theme }) {
 }
 
 // One IVR option: the key pressed, where it went, and how those calls ended.
-function FlowOption({ option, maxCalls, theme }) {
+function FlowOption({ option, maxCalls, theme, isZcc }) {
   const t = THEMES[theme];
   const { pressKey, target, targetKind, calls, answered, abandoned, voicemail } = option;
   const missed = option.missed || 0;
@@ -447,15 +447,23 @@ function FlowOption({ option, maxCalls, theme }) {
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0" }}>
-      {/* key cap */}
-      <div style={{
-        width: 26, height: 26, flexShrink: 0, borderRadius: 6,
-        background: pressKey ? FLOW_COLORS.menu + "22" : t.chipBg,
-        border: `1px solid ${pressKey ? FLOW_COLORS.menu + "55" : t.divider}`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 700,
-        color: pressKey ? FLOW_COLORS.menu : t.textFaint,
-      }}>{pressKey || "–"}</div>
+      {/* key cap — ZCC exposes no per-key data, so show queue wait instead */}
+      {isZcc ? (
+        <div style={{
+          width: 46, flexShrink: 0, textAlign: "center",
+          fontFamily: "'DM Mono', monospace", fontSize: 11, fontWeight: 700,
+          color: option.avgWait > 60 ? FLOW_COLORS.abandoned : option.avgWait > 20 ? "#FFB800" : t.textMuted,
+        }}>{option.avgWait ? fmt(option.avgWait) : "–"}</div>
+      ) : (
+        <div style={{
+          width: 26, height: 26, flexShrink: 0, borderRadius: 6,
+          background: pressKey ? FLOW_COLORS.menu + "22" : t.chipBg,
+          border: `1px solid ${pressKey ? FLOW_COLORS.menu + "55" : t.divider}`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 700,
+          color: pressKey ? FLOW_COLORS.menu : t.textFaint,
+        }}>{pressKey || "–"}</div>
+      )}
 
       <div style={{ width: 14, flexShrink: 0, textAlign: "center", color: t.textFaint, fontSize: 11 }}>→</div>
 
@@ -496,7 +504,7 @@ function FlowOption({ option, maxCalls, theme }) {
   );
 }
 
-function MenuBlock({ menu, theme }) {
+function MenuBlock({ menu, theme, isZcc }) {
   const t = THEMES[theme];
   const maxCalls = Math.max(...menu.options.map(o => o.calls), menu.droppedHere, 1);
   const dropRate = menu.calls > 0 ? Math.round((menu.droppedHere / menu.calls) * 100) : 0;
@@ -512,12 +520,12 @@ function MenuBlock({ menu, theme }) {
           <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: FLOW_COLORS.menu, textTransform: "uppercase" }}>{menu.label}</span>
         </div>
         <span style={{ fontSize: 10, color: t.textMuted }}>
-          <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: t.text }}>{menu.calls}</span> reached this menu
+          <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: t.text }}>{menu.calls}</span> {isZcc ? "through this flow" : "reached this menu"}
         </span>
       </div>
 
       <div style={{ borderTop: `1px solid ${t.divider}` }}>
-        {menu.options.map(o => <FlowOption key={o.id} option={o} maxCalls={maxCalls} theme={theme} />)}
+        {menu.options.map(o => <FlowOption key={o.id} option={o} maxCalls={maxCalls} theme={theme} isZcc={isZcc} />)}
 
         {menu.droppedHere > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: `1px dashed ${t.divider}` }}>
@@ -527,12 +535,12 @@ function MenuBlock({ menu, theme }) {
               fontSize: 12, color: t.textFaint,
             }}>✕</div>
             <div style={{ width: 14, flexShrink: 0 }} />
-            <div style={{ width: 170, flexShrink: 0, fontSize: 12, fontWeight: 700, color: FLOW_COLORS.abandoned }}>Hung up at menu</div>
+            <div style={{ width: 170, flexShrink: 0, fontSize: 12, fontWeight: 700, color: FLOW_COLORS.abandoned }}>{isZcc ? "Left during flow" : "Hung up at menu"}</div>
             <div style={{ flex: 1, minWidth: 80 }}>
               <div style={{ height: 14, borderRadius: 4, background: FLOW_COLORS.abandoned, width: `${Math.max(2, (menu.droppedHere / maxCalls) * 100)}%` }} />
             </div>
             <div style={{ width: 44, flexShrink: 0, textAlign: "right", fontFamily: "'DM Mono', monospace", fontSize: 14, fontWeight: 700, color: FLOW_COLORS.abandoned }}>{menu.droppedHere}</div>
-            <div style={{ width: 118, flexShrink: 0, textAlign: "right", fontSize: 10, color: t.textMuted }}>{dropRate}% never chose</div>
+            <div style={{ width: 118, flexShrink: 0, textAlign: "right", fontSize: 10, color: t.textMuted }}>{dropRate}% {isZcc ? "never queued" : "never chose"}</div>
           </div>
         )}
       </div>
@@ -540,9 +548,14 @@ function MenuBlock({ menu, theme }) {
   );
 }
 
-function CallFlowTab({ callFlow, theme }) {
+function CallFlowTab({ callFlow, zccFlow, theme }) {
   const t = THEMES[theme];
-  const cf = callFlow || {};
+  // iTeach's inbound support runs on Zoom Contact Center, so ZCC is the real
+  // source for this tab. Zoom Phone data is kept for lines that use its IVR.
+  const zcc = zccFlow || {};
+  const isZcc = (zcc.menus || []).length > 0;
+  const cf = isZcc ? zcc : (callFlow || {});
+  const phone = callFlow || {};
   const menus = cf.menus || [];
   const outcomes = cf.outcomes || {};
   const analyzed = cf.analyzed || 0;
@@ -572,14 +585,18 @@ function CallFlowTab({ callFlow, theme }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <KpiTile label="Through Menu" value={enteredTree} color="#038CF1" sub={`of ${analyzed} inbound traced`} size="large" theme={theme} />
-        <KpiTile label="Answer Rate" value={enteredTree > 0 ? `${answerRate}%` : "—"} color={answerRate >= 85 ? "#22C55E" : answerRate >= 70 ? "#FFB800" : "#FF3B5C"} sub={enteredTree > 0 ? `${treeAnswered} of ${enteredTree} via menu` : "no menu calls yet"} size="large" theme={theme} />
+        <KpiTile label={isZcc ? "Through Flow" : "Through Menu"} value={enteredTree} color="#038CF1" sub={`of ${analyzed} inbound traced`} size="large" theme={theme} />
+        <KpiTile label="Answer Rate" value={enteredTree > 0 ? `${answerRate}%` : "—"} color={answerRate >= 85 ? "#22C55E" : answerRate >= 70 ? "#FFB800" : "#FF3B5C"} sub={enteredTree > 0 ? `${treeAnswered} of ${enteredTree} handled` : "nothing traced yet"} size="large" theme={theme} />
         <KpiTile label="Lost" value={lost} color={FLOW_COLORS.abandoned} sub={`${abandoned} gave up · ${missed} rang out`} size="large" theme={theme} />
-        <KpiTile label="Lost In Menu" value={cf.droppedInMenu || 0} color="#FFB800" sub="never reached a queue" size="large" theme={theme} />
+        {isZcc
+          ? <KpiTile label="Avg Wait" value={cf.avgWaitSec ? fmt(cf.avgWaitSec) : "0s"} color={cf.avgWaitSec > 60 ? "#FF3B5C" : cf.avgWaitSec > 20 ? "#FFB800" : "#22C55E"} sub={`${cf.droppedInMenu || 0} left during flow`} size="large" theme={theme} />
+          : <KpiTile label="Lost In Menu" value={cf.droppedInMenu || 0} color="#FFB800" sub="never reached a queue" size="large" theme={theme} />}
       </div>
       <div style={{ fontSize: 9, color: t.textFaint, marginTop: -6 }}>
         {updated ? `Updated ${updated}` : "Waiting for first poll"} · inbound only · {analyzed} paths traced
-        {cf.siteFilter?.length > 0 && (() => {
+        {isZcc && Object.keys(cf.queuesSeen || {}).length > 0 &&
+          ` · ${Object.keys(cf.queuesSeen).length} ZCC queues${cf.queueFilter?.length ? ` (filtered to ${cf.queueFilter.join(", ")})` : ""}`}
+        {!isZcc && cf.siteFilter?.length > 0 && (() => {
           const excluded = Object.entries(cf.sitesSeen || {})
             .filter(([name]) => !cf.sitesIncluded?.[name])
             .sort((a, b) => b[1] - a[1]);
@@ -590,7 +607,7 @@ function CallFlowTab({ callFlow, theme }) {
         })()}
       </div>
 
-      {analyzed > 0 && menus.length === 0 ? (
+      {analyzed > 0 && menus.length === 0 && !isZcc ? (
         <>
           <div style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}`, borderRadius: 12, padding: "16px 18px" }}>
             <SectionHeader color="#FFB800" label="No phone tree on this line" theme={theme} />
@@ -665,13 +682,14 @@ function CallFlowTab({ callFlow, theme }) {
             </div>
           )}
 
-          {menus.map(m => <MenuBlock key={m.label} menu={m} theme={theme} />)}
+          {menus.map(m => <MenuBlock key={m.label} menu={m} theme={theme} isZcc={isZcc} />)}
         </>
       )}
 
       <div style={{ fontSize: 9, color: t.textFaint, textAlign: "center", lineHeight: 1.6 }}>
-        Zoom does not emit events while a caller is inside the phone tree — paths are read after each call ends,
-        so this trails live by a few minutes.
+        {isZcc
+          ? "Source: Zoom Contact Center. ZCC reports the flow a caller came through and where they landed, but not which key they pressed inside it. Read after each call completes, so this trails live by a few minutes."
+          : "Zoom does not emit events while a caller is inside the phone tree — paths are read after each call ends, so this trails live by a few minutes."}
         {cf.queued > 0 && ` ${cf.queued} calls still queued for tracing.`}
       </div>
     </div>
@@ -1017,6 +1035,7 @@ export default function App() {
   const hourlyVolume = data?.hourlyVolume || new Array(24).fill(0);
   const zoomQueues = data?.zoomQueues || { totalWaiting: 0, avgWaitTime: 0, queues: [] };
   const callFlow = data?.callFlow || { menus: [], outcomes: {}, analyzed: 0 };
+  const zccFlow = data?.zccFlow || { menus: [], outcomes: {}, analyzed: 0 };
 
   const leadTeams = TEAM_LEADS[selectedLead] || TEAM_LEADS["All"];
   const manualAgents = useMemo(() =>
@@ -1137,7 +1156,7 @@ export default function App() {
         {activeTab === "live" ? (
           <LiveTab manualAgents={manualAgents} tick={tick} stats={stats} zoomQueues={zoomQueues} expanded={expanded} theme={theme} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />
         ) : activeTab === "callflow" ? (
-          <CallFlowTab callFlow={callFlow} theme={theme} />
+          <CallFlowTab callFlow={callFlow} zccFlow={zccFlow} theme={theme} />
         ) : (
           <PerformanceTab manualAgents={manualAgents} stats={stats} hourlyVolume={hourlyVolume} theme={theme} zoomQueues={zoomQueues} sfPipeline={data?.sfPipeline || {}} />
         )}

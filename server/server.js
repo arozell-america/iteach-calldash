@@ -59,6 +59,12 @@ const state = {
     callQuality: { mos: 0, jitter: 0, latency: 0, packetLoss: 0 },
     queues: [],
   },
+  zccFlow: {
+    source: 'zcc', updatedAt: null, analyzed: 0, enteredTree: 0, treeAnswered: 0,
+    menus: [], outcomes: { answered: 0, abandoned: 0, voicemail: 0, missed: 0, other: 0 },
+    droppedInMenu: 0, avgWaitSec: 0, avgFlowSec: 0,
+    queuesSeen: {}, flowsSeen: {}, queueFilter: [], nodes: [], edges: [], entries: [],
+  },
   callFlow: {
     updatedAt: null, analyzed: 0, pending: 0, queued: 0,
     enteredTree: 0, treeAnswered: 0, menus: [], nodes: [], edges: [], entries: [],
@@ -164,6 +170,7 @@ function getPublicState() {
     zoomQueues: state.zoomQueues,
     sfPipeline: state.sfPipeline || {},
     callFlow: state.callFlow || { menus: [], nodes: [], edges: [], entries: [], outcomes: {}, analyzed: 0 },
+    zccFlow: state.zccFlow || { menus: [], outcomes: {}, analyzed: 0 },
     timestamp: Date.now(),
   };
 }
@@ -1670,6 +1677,159 @@ async function pollCallFlow() {
 setTimeout(pollCallFlow, 30000);
 setInterval(pollCallFlow, 3 * 60 * 1000);
 console.log('[CallFlow] Phone tree poll every 3 min (post-call — Zoom has no live IVR events)');
+
+// ─── Zoom Contact Center engagements ─────────────────────────────────────────
+//
+// iTeach's inbound support traffic runs on Zoom Contact Center, not Zoom Phone.
+// The IVR lives in a ZCC "flow", and Zoom Phone only sees the leg after ZCC
+// hands the call off (event: transfer_from_zoom_contact_center), which is why
+// the Zoom Phone board found no auto receptionist for this line.
+//
+// ZCC exposes flow -> queue -> agent with per-stage timing. It does NOT expose
+// individual key presses inside a flow, so this board shows which entry flow a
+// caller came through and where they ended up, not which digit they pressed.
+
+const ZCC_QUEUES = (process.env.CALLFLOW_ZCC_QUEUES || '')
+  .split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+
+function zccQueueAllowed(name) {
+  if (!ZCC_QUEUES.length) return true;          // empty = show everything
+  return ZCC_QUEUES.some(tok => (name || '').toLowerCase().includes(tok));
+}
+
+function zccOutcome(e) {
+  if (Number(e.voice_mail || 0) > 0) return 'voicemail';
+  const agents = e.agents || e.users || [];
+  if (agents.length > 0 && Number(e.handling_duration || e.talk_duration || 0) > 0) return 'answered';
+  if (agents.length > 0) return 'answered';
+  return 'abandoned';
+}
+
+function aggregateZcc(engagements) {
+  const flowMap = new Map();
+  const outcomes = { answered: 0, abandoned: 0, voicemail: 0 };
+  const queuesSeen = {}, flowsSeen = {};
+  let waitTotal = 0, waitCount = 0, flowTotal = 0, flowCount = 0;
+  let analyzed = 0, noFlow = 0;
+
+  for (const e of engagements) {
+    const queues = e.queues || [];
+    const qName = queues[0]?.queue_name || null;
+    if (qName) queuesSeen[qName] = (queuesSeen[qName] || 0) + 1;
+    if (qName && !zccQueueAllowed(qName)) continue;
+
+    analyzed++;
+    const outcome = zccOutcome(e);
+    outcomes[outcome] = (outcomes[outcome] || 0) + 1;
+
+    const wait = Number(e.waiting_duration || 0);
+    if (wait > 0) { waitTotal += wait; waitCount++; }
+    const fd = Number(e.flow_duration || 0);
+    if (fd > 0) { flowTotal += fd; flowCount++; }
+
+    const flows = e.flows || [];
+    const fName = flows[0]?.flow_name || '(no flow)';
+    flowsSeen[fName] = (flowsSeen[fName] || 0) + 1;
+    if (!flows.length) noFlow++;
+
+    if (!flowMap.has(fName)) {
+      flowMap.set(fName, { label: fName, calls: 0, droppedHere: 0, options: new Map() });
+    }
+    const flow = flowMap.get(fName);
+    flow.calls++;
+
+    // no queue reached = the caller left while still in the flow
+    if (!qName) { flow.droppedHere++; continue; }
+
+    const oid = `q|${qName}`;
+    if (!flow.options.has(oid)) {
+      flow.options.set(oid, {
+        id: oid, pressKey: null, target: qName, targetKind: 'queue',
+        calls: 0, answered: 0, abandoned: 0, missed: 0, voicemail: 0, other: 0,
+        waitTotal: 0, waitCount: 0,
+      });
+    }
+    const opt = flow.options.get(oid);
+    opt.calls++;
+    if (opt[outcome] !== undefined) opt[outcome]++;
+    else opt.other++;
+    if (wait > 0) { opt.waitTotal += wait; opt.waitCount++; }
+  }
+
+  const menus = [...flowMap.values()]
+    .map(f => ({
+      label: f.label,
+      calls: f.calls,
+      droppedHere: f.droppedHere,
+      options: [...f.options.values()]
+        .map(o => ({ ...o, avgWait: o.waitCount ? Math.round(o.waitTotal / o.waitCount) : 0 }))
+        .sort((a, b) => b.calls - a.calls),
+    }))
+    .sort((a, b) => b.calls - a.calls);
+
+  return {
+    source: 'zcc',
+    updatedAt: Date.now(),
+    analyzed,
+    enteredTree: analyzed - noFlow,
+    treeAnswered: outcomes.answered || 0,
+    menus,
+    outcomes: { ...outcomes, missed: 0, other: 0 },
+    droppedInMenu: menus.reduce((sum, m) => sum + m.droppedHere, 0),
+    avgWaitSec: waitCount ? Math.round(waitTotal / waitCount) : 0,
+    avgFlowSec: flowCount ? Math.round(flowTotal / flowCount) : 0,
+    queuesSeen,
+    flowsSeen,
+    queueFilter: ZCC_QUEUES,
+    nodes: [], edges: [], entries: [],
+  };
+}
+
+async function pollZcc() {
+  if (!ZOOM_ACCOUNT_ID || !ZOOM_CLIENT_ID || !ZOOM_CLIENT_SECRET) return;
+  const token = await getZoomToken();
+  if (!token) return;
+  const auth = { headers: { Authorization: 'Bearer ' + token } };
+
+  try {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+    let all = [];
+    let nextPage = '', pages = 0;
+    do {
+      const url = `https://api.zoom.us/v2/contact_center/engagements?from=${today}&to=${today}&page_size=100`
+        + (nextPage ? `&next_page_token=${encodeURIComponent(nextPage)}` : '');
+      const r = await fetch(url, auth);
+      if (!r.ok) {
+        if (pages === 0) console.log('[ZCC] engagements failed:', r.status, (await r.text()).slice(0, 160));
+        break;
+      }
+      const d = await r.json();
+      all = all.concat(d.engagements || []);
+      nextPage = d.next_page_token || '';
+      pages++;
+    } while (nextPage && pages < 20);
+
+    // voice only — the same flow can carry chat/email engagements
+    const voice = all.filter(e => {
+      const ct = e.channel_types || [];
+      return ct.length === 0 || ct.includes('voice');
+    });
+    const inbound = voice.filter(e => (e.direction || '').toLowerCase() === 'inbound');
+
+    state.zccFlow = aggregateZcc(inbound);
+    state.zccFlow.totalEngagements = all.length;
+
+    console.log(`[ZCC] ${all.length} engagements today, ${inbound.length} inbound voice, `
+      + `${state.zccFlow.menus.length} flows, ${Object.keys(state.zccFlow.queuesSeen).length} queues`);
+    broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+  } catch (e) {
+    console.log('[ZCC] error:', e.message);
+  }
+}
+
+setTimeout(pollZcc, 25000);
+setInterval(pollZcc, 3 * 60 * 1000);
+console.log('[ZCC] Contact Center engagement poll every 3 min');
 
 // ─── Daily Midnight Reset ────────────────────────────────────────────────────
 
