@@ -402,6 +402,7 @@ function LiveTab({ manualAgents, tick, stats, zoomQueues, expanded, theme, statu
 const FLOW_COLORS = {
   answered:  "#22C55E",
   abandoned: "#FF3B5C",
+  missed:    "#FFB800",
   voicemail: "#A78BFA",
   forwarded: "#FFB800",
   other:     "#64748B",
@@ -430,13 +431,17 @@ function TargetChip({ kind, label, theme }) {
 function FlowOption({ option, maxCalls, theme }) {
   const t = THEMES[theme];
   const { pressKey, target, targetKind, calls, answered, abandoned, voicemail } = option;
-  const lossRate = calls > 0 ? Math.round((abandoned / calls) * 100) : 0;
+  const missed = option.missed || 0;
+  // "lost" = caller gave up + rang out with nobody taking it
+  const lost = abandoned + missed;
+  const lossRate = calls > 0 ? Math.round((lost / calls) * 100) : 0;
   const isBleeding = calls >= 5 && lossRate >= 25;
   const widthPct = maxCalls > 0 ? Math.max(2, (calls / maxCalls) * 100) : 0;
 
   const segs = [
     { key: "answered", val: answered },
     { key: "voicemail", val: voicemail },
+    { key: "missed", val: missed },
     { key: "abandoned", val: abandoned },
   ].filter(s => s.val > 0);
 
@@ -476,7 +481,7 @@ function FlowOption({ option, maxCalls, theme }) {
           <>
             <span style={{ color: FLOW_COLORS.answered, fontWeight: 700 }}>{answered}</span> answered
             {voicemail > 0 && <> · <span style={{ color: FLOW_COLORS.voicemail, fontWeight: 700 }}>{voicemail}</span> vm</>}
-            {abandoned > 0 && (
+            {lost > 0 && (
               <>
                 {" · "}
                 <span style={{ color: isBleeding ? FLOW_COLORS.abandoned : t.textMuted, fontWeight: isBleeding ? 700 : 400 }}>
@@ -543,6 +548,8 @@ function CallFlowTab({ callFlow, theme }) {
   const analyzed = cf.analyzed || 0;
   const answered = outcomes.answered || 0;
   const abandoned = outcomes.abandoned || 0;
+  const missed = outcomes.missed || 0;
+  const lost = abandoned + missed;
   const answerRate = analyzed > 0 ? Math.round((answered / analyzed) * 100) : 0;
 
   const updated = cf.updatedAt
@@ -552,9 +559,10 @@ function CallFlowTab({ callFlow, theme }) {
   // Rank every option across every menu so the worst leak is obvious.
   const leaks = menus
     .flatMap(m => m.options.map(o => ({ ...o, menu: m.label })))
-    .filter(o => o.calls >= 5 && o.abandoned > 0)
-    .map(o => ({ ...o, lossRate: Math.round((o.abandoned / o.calls) * 100) }))
-    .sort((a, b) => b.lossRate - a.lossRate || b.abandoned - a.abandoned)
+    .map(o => ({ ...o, lost: (o.abandoned || 0) + (o.missed || 0) }))
+    .filter(o => o.calls >= 5 && o.lost > 0)
+    .map(o => ({ ...o, lossRate: Math.round((o.lost / o.calls) * 100) }))
+    .sort((a, b) => b.lossRate - a.lossRate || b.lost - a.lost)
     .slice(0, 5);
 
   return (
@@ -562,7 +570,7 @@ function CallFlowTab({ callFlow, theme }) {
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <KpiTile label="Calls Traced" value={analyzed} color="#038CF1" sub={updated ? `as of ${updated}` : "waiting for first poll"} size="large" theme={theme} />
         <KpiTile label="Answer Rate" value={`${answerRate}%`} color={answerRate >= 85 ? "#22C55E" : answerRate >= 70 ? "#FFB800" : "#FF3B5C"} sub={`${answered} of ${analyzed}`} size="large" theme={theme} />
-        <KpiTile label="Abandoned" value={abandoned} color={FLOW_COLORS.abandoned} sub="hung up before an agent" size="large" theme={theme} />
+        <KpiTile label="Lost" value={lost} color={FLOW_COLORS.abandoned} sub={`${abandoned} gave up · ${missed} rang out`} size="large" theme={theme} />
         <KpiTile label="Lost In Menu" value={cf.droppedInMenu || 0} color="#FFB800" sub="never reached a queue" size="large" theme={theme} />
       </div>
 
@@ -589,7 +597,7 @@ function CallFlowTab({ callFlow, theme }) {
                       <span style={{ color: t.text, fontWeight: 700 }}>{l.target}</span>
                     </span>
                     <span style={{ color: t.textMuted, flexShrink: 0 }}>
-                      <span style={{ color: FLOW_COLORS.abandoned, fontWeight: 700 }}>{l.abandoned}</span> of {l.calls} lost
+                      <span style={{ color: FLOW_COLORS.abandoned, fontWeight: 700 }}>{l.lost}</span> of {l.calls} lost
                     </span>
                   </div>
                 ))}

@@ -62,7 +62,7 @@ const state = {
   callFlow: {
     updatedAt: null, analyzed: 0, pending: 0, queued: 0,
     menus: [], nodes: [], edges: [], entries: [],
-    outcomes: { answered: 0, abandoned: 0, voicemail: 0, forwarded: 0, other: 0 },
+    outcomes: { answered: 0, abandoned: 0, missed: 0, voicemail: 0, other: 0 },
     droppedInMenu: 0,
   },
 };
@@ -1268,38 +1268,61 @@ function cfHopLabel(el) {
   return { kind: 'other', label: name };
 }
 
+// Result vocabulary observed live: accepted, succeeded, answered, abandoned,
+// no_answer, rejected, busy, ring_timeout, overflowed, voicemail.
+// "abandoned" = caller gave up; "missed" = rang out / nobody took it.
+const CF_ANSWERED = new Set(['answered', 'accepted', 'succeeded']);
+const CF_MISSED   = new Set(['no_answer', 'rejected', 'busy', 'ring_timeout', 'overflowed']);
+
 function cfOutcome(result) {
-  const r = (result || '').toLowerCase();
+  const r = (result || '').toLowerCase().trim();
   if (!r) return 'other';
+  // Exact matches MUST come before any substring test: "no_answer" contains
+  // "answer", and scoring an unanswered call as answered inflates the answer rate.
+  if (CF_MISSED.has(r)) return 'missed';
+  if (CF_ANSWERED.has(r)) return 'answered';
+  if (r === 'abandoned') return 'abandoned';
   if (r.includes('voicemail')) return 'voicemail';
+  if (r.includes('abandon') || r.includes('hang') || r.includes('cancel')) return 'abandoned';
+  if (r.includes('no_answer') || r.includes('timeout') || r.includes('reject') || r.includes('busy')) return 'missed';
   if (r.includes('answer') || r.includes('connect') || r.includes('succeed')) return 'answered';
-  if (r.includes('abandon') || r.includes('hang') || r.includes('cancel') || r.includes('miss') || r.includes('no_answer')) return 'abandoned';
-  if (r.includes('forward') || r.includes('transfer')) return 'forwarded';
   return 'other';
 }
 
 // Turn one call's raw call_path into an ordered hop list + outcome.
 function parseCallPath(detail) {
-  const raw = detail.call_path || detail.call_logs || detail.path || [];
+  const raw = detail.call_path || detail.path || [];
   if (!Array.isArray(raw) || raw.length === 0) return null;
 
-  // segment = sequential leg, node = parallel branch (1 = path taken,
-  // 0 = unsuccessful attempt). Follow node 1 where present.
-  const primary = raw.filter(el => {
-    const node = cfPick(el, 'node');
-    return node === undefined || node === null || Number(node) !== 0;
-  });
-  const ordered = (primary.length ? primary : raw)
-    .slice()
-    .sort((a, b) => Number(cfPick(a, 'segment') || 0) - Number(cfPick(b, 'segment') || 0));
+  // Array order is the true call order. `segment` does NOT reliably increment
+  // (real payloads keep an entire IVR->queue->ring sequence in segment 1), and
+  // `node` is a branch id (1 = menu leg, 2 = queue leg), NOT a success flag —
+  // so neither can be used to sort or to filter out failed attempts.
+  const ordered = raw;
+
+  // Queue ring attempts (event: ring_to_member) are how a queue hunts for a
+  // free agent, not steps in the phone tree. They are scanned for who actually
+  // picked up, but kept out of the tree so the board shows routing, not hunting.
+  const isRingAttempt = el => (cfPick(el, 'event') || '') === 'ring_to_member';
+
+  let answeredBy = null;
+  for (const el of ordered) {
+    const res = (cfPick(el, 'result') || '').toLowerCase();
+    const type = (cfPick(el, 'callee_ext_type') || '').toLowerCase();
+    if (type === 'user' && CF_ANSWERED.has(res) && !answeredBy) {
+      answeredBy = cfPick(el, 'callee_name', 'callee_email') || null;
+    }
+  }
 
   const hops = [];
   for (const el of ordered) {
+    if (isRingAttempt(el)) continue;
     const hop = cfHopLabel(el);
     if (!hop) continue;
     const pressKey = cfPick(el, 'press_key', 'pressed_key', 'dtmf');
     const last = hops[hops.length - 1];
-    // collapse consecutive duplicates (same element can repeat across nodes)
+    // An auto receptionist emits one row on entry and another carrying the
+    // key press — collapse them, keeping the key.
     if (last && last.label === hop.label && last.kind === hop.kind) {
       if (pressKey && !last.pressKey) last.pressKey = String(pressKey);
       continue;
@@ -1308,15 +1331,27 @@ function parseCallPath(detail) {
   }
   if (hops.length === 0) return null;
 
-  const finalResult = cfPick(ordered[ordered.length - 1], 'result') || cfPick(detail, 'call_result', 'result');
-  const outcome = cfOutcome(finalResult);
-  const lastHop = hops[hops.length - 1];
+  // The top-level call_result is authoritative. Deriving from the last hop is
+  // wrong: a queue can ring another agent AFTER one already answered, leaving
+  // a "rejected" leg last on a call that was in fact answered.
+  let outcome = cfOutcome(cfPick(detail, 'call_result', 'result'));
+  if (outcome === 'other' || (outcome !== 'answered' && answeredBy)) {
+    if (answeredBy) outcome = 'answered';
+    else {
+      const seen = ordered.map(el => cfOutcome(cfPick(el, 'result')));
+      if (seen.includes('voicemail')) outcome = 'voicemail';
+      else if (seen.includes('abandoned')) outcome = 'abandoned';
+      else if (seen.includes('missed')) outcome = 'missed';
+    }
+  }
 
+  const lastHop = hops[hops.length - 1];
   return {
     hops,
     outcome,
-    // caller hung up while still inside the menu — never reached a queue or agent
-    droppedInMenu: outcome === 'abandoned' && lastHop.kind === 'menu',
+    answeredBy,
+    // caller left while still in the menu — never reached a queue or a person
+    droppedInMenu: outcome !== 'answered' && lastHop.kind === 'menu',
     durationSec: Number(cfPick(detail, 'duration') || 0),
     waitSec: Number(cfPick(detail, 'waiting_time', 'wait_time') || 0),
     direction: cfPick(detail, 'direction'),
@@ -1327,7 +1362,7 @@ function parseCallPath(detail) {
 function aggregateCallFlow() {
   const nodeMap = new Map();  // label -> node
   const edgeMap = new Map();  // from||to||key -> edge
-  const outcomes = { answered: 0, abandoned: 0, voicemail: 0, forwarded: 0, other: 0 };
+  const outcomes = { answered: 0, abandoned: 0, missed: 0, voicemail: 0, other: 0 };
   const entryMap = new Map();
   let droppedInMenu = 0;
   let analyzed = 0;
@@ -1352,7 +1387,7 @@ function aggregateCallFlow() {
       // credit the outcome to the hop the call actually ended on
       if (i === summary.hops.length - 1) {
         if (summary.outcome === 'answered') n.answered++;
-        else if (summary.outcome === 'abandoned') n.abandoned++;
+        else if (summary.outcome === 'abandoned' || summary.outcome === 'missed') n.abandoned++;
       }
 
       const next = summary.hops[i + 1];
@@ -1394,7 +1429,7 @@ function aggregateCallFlow() {
       if (!menu.options.has(oid)) {
         menu.options.set(oid, {
           id: oid, pressKey: key, target: next.label, targetKind: next.kind,
-          calls: 0, answered: 0, abandoned: 0, voicemail: 0, other: 0,
+          calls: 0, answered: 0, abandoned: 0, missed: 0, voicemail: 0, other: 0,
         });
       }
       const opt = menu.options.get(oid);
