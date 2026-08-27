@@ -492,8 +492,52 @@ app.get('/api/debug-zcc', async (req, res) => {
     await new Promise(r2 => setTimeout(r2, 80));
   }
 
+  // Validate my outcome logic against ZCC's own abandoned_count. A perfect
+  // answered/abandoned split per flow is more likely a classification bug than
+  // a real pattern, so cross-check rather than trust it.
+  let validation = null;
+  try {
+    const er = await fetch(`${B}/engagements?from=${today}&to=${today}&page_size=100`, auth);
+    const ar = await fetch(`${B}/analytics/dataset/historical/engagement?from=${today}&to=${today}&page_size=100`, auth);
+    if (er.ok && ar.ok) {
+      const eng = (await er.json()).engagements || [];
+      const ana = (await ar.json()).engagements || [];
+      const byId = new Map(ana.map(a => [a.engagement_id, a]));
+      let matched = 0, agree = 0;
+      const disagreements = [];
+      const matrix = {};
+      for (const e of eng) {
+        const a = byId.get(e.engagement_id);
+        if (!a) continue;
+        matched++;
+        const mine = zccOutcome(e);
+        const theirs = Number(a.abandoned_count || 0) > 0 ? 'abandoned' : 'answered';
+        const key = `mine=${mine} / zcc=${theirs}`;
+        matrix[key] = (matrix[key] || 0) + 1;
+        if (mine === theirs) agree++;
+        else if (disagreements.length < 4) {
+          disagreements.push({
+            engagement_id: e.engagement_id,
+            mine, theirs,
+            agents: (e.agents || e.users || []).map(x => x.display_name),
+            queues: (e.queues || []).map(x => x.queue_name),
+            flows: (e.flows || []).map(x => x.flow_name),
+            handling_duration: e.handling_duration,
+            talk_duration: e.talk_duration,
+            waiting_duration: e.waiting_duration,
+            voice_mail: e.voice_mail,
+            zcc_abandoned_count: a.abandoned_count,
+          });
+        }
+      }
+      validation = { matched, agree, agreementPct: matched ? Math.round(agree / matched * 100) : null, matrix, disagreements };
+    } else {
+      validation = { note: 'could not fetch both datasets', engStatus: er.status, anaStatus: ar.status };
+    }
+  } catch (e) { validation = { error: e.message }; }
+
   const working = Object.entries(results).filter(([, v]) => v.status === 200).map(([k]) => k);
-  res.json({ today, working, results });
+  res.json({ today, working, validation, results });
 });
 
 app.get('/api/debug-callpath', async (req, res) => {
