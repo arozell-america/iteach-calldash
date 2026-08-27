@@ -61,7 +61,7 @@ const state = {
   },
   zccFlow: {
     source: 'zcc', updatedAt: null, analyzed: 0, enteredTree: 0, treeAnswered: 0,
-    menus: [], outcomes: { answered: 0, abandoned: 0, voicemail: 0, missed: 0, other: 0 },
+    menus: [], outcomes: { answered: 0, abandoned: 0, voicemail: 0, in_flow: 0, missed: 0, other: 0 },
     droppedInMenu: 0, avgWaitSec: 0, avgFlowSec: 0,
     queuesSeen: {}, flowsSeen: {}, queueFilter: [], nodes: [], edges: [], entries: [],
   },
@@ -1741,25 +1741,37 @@ function zccQueueAllowed(name) {
   return ZCC_QUEUES.some(tok => (name || '').toLowerCase().includes(tok));
 }
 
+// "No Queue Used" is a real queue_name meaning the call never entered a queue.
+function zccReachedQueue(e) {
+  const q = (e.queues || [])[0]?.queue_name;
+  return !!q && q.toLowerCase() !== 'no queue used';
+}
+
 function zccOutcome(e) {
   if (Number(e.voice_mail || 0) > 0) return 'voicemail';
   const agents = e.agents || e.users || [];
-  if (agents.length > 0 && Number(e.handling_duration || e.talk_duration || 0) > 0) return 'answered';
   if (agents.length > 0) return 'answered';
+  // Validated against ZCC's own abandoned_count: engagements that never reached
+  // a queue (no agent, all durations zero) are NOT counted as abandoned by ZCC.
+  // Calling them abandoned overstated the abandon rate roughly 2.5x, so they get
+  // their own bucket: the caller ended inside the flow without ever queueing.
+  if (!zccReachedQueue(e)) return 'in_flow';
   return 'abandoned';
 }
 
 function aggregateZcc(engagements) {
   const flowMap = new Map();
-  const outcomes = { answered: 0, abandoned: 0, voicemail: 0 };
+  const outcomes = { answered: 0, abandoned: 0, voicemail: 0, in_flow: 0 };
   const queuesSeen = {}, flowsSeen = {};
   let waitTotal = 0, waitCount = 0, flowTotal = 0, flowCount = 0;
   let analyzed = 0, noFlow = 0;
 
   for (const e of engagements) {
     const queues = e.queues || [];
-    const qName = queues[0]?.queue_name || null;
-    if (qName) queuesSeen[qName] = (queuesSeen[qName] || 0) + 1;
+    const reached = zccReachedQueue(e);
+    const qName = reached ? queues[0].queue_name : null;
+    const rawQ = queues[0]?.queue_name;
+    if (rawQ) queuesSeen[rawQ] = (queuesSeen[rawQ] || 0) + 1;
     if (qName && !zccQueueAllowed(qName)) continue;
 
     analyzed++;
@@ -1819,7 +1831,7 @@ function aggregateZcc(engagements) {
     treeAnswered: outcomes.answered || 0,
     menus,
     outcomes: { ...outcomes, missed: 0, other: 0 },
-    droppedInMenu: menus.reduce((sum, m) => sum + m.droppedHere, 0),
+    droppedInMenu: outcomes.in_flow || 0,
     avgWaitSec: waitCount ? Math.round(waitTotal / waitCount) : 0,
     avgFlowSec: flowCount ? Math.round(flowTotal / flowCount) : 0,
     queuesSeen,

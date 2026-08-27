@@ -587,9 +587,9 @@ function CallFlowTab({ callFlow, zccFlow, theme }) {
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <KpiTile label={isZcc ? "Through Flow" : "Through Menu"} value={enteredTree} color="#038CF1" sub={`of ${analyzed} inbound traced`} size="large" theme={theme} />
         <KpiTile label="Answer Rate" value={enteredTree > 0 ? `${answerRate}%` : "—"} color={answerRate >= 85 ? "#22C55E" : answerRate >= 70 ? "#FFB800" : "#FF3B5C"} sub={enteredTree > 0 ? `${treeAnswered} of ${enteredTree} handled` : "nothing traced yet"} size="large" theme={theme} />
-        <KpiTile label="Lost" value={lost} color={FLOW_COLORS.abandoned} sub={`${abandoned} gave up · ${missed} rang out`} size="large" theme={theme} />
+        <KpiTile label={isZcc ? "Abandoned In Queue" : "Lost"} value={isZcc ? abandoned : lost} color={FLOW_COLORS.abandoned} sub={isZcc ? "waited, then gave up" : `${abandoned} gave up · ${missed} rang out`} size="large" theme={theme} />
         {isZcc
-          ? <KpiTile label="Avg Wait" value={cf.avgWaitSec ? fmt(cf.avgWaitSec) : "0s"} color={cf.avgWaitSec > 60 ? "#FF3B5C" : cf.avgWaitSec > 20 ? "#FFB800" : "#22C55E"} sub={`${cf.droppedInMenu || 0} left during flow`} size="large" theme={theme} />
+          ? <KpiTile label="Ended In Flow" value={cf.droppedInMenu || 0} color="#FFB800" sub={`never queued · avg wait ${cf.avgWaitSec ? fmt(cf.avgWaitSec) : "0s"}`} size="large" theme={theme} />
           : <KpiTile label="Lost In Menu" value={cf.droppedInMenu || 0} color="#FFB800" sub="never reached a queue" size="large" theme={theme} />}
       </div>
       <div style={{ fontSize: 9, color: t.textFaint, marginTop: -6 }}>
