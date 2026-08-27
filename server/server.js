@@ -435,75 +435,85 @@ app.get('/api/debug-powerpack', async (req, res) => {
 });
 
 app.get('/api/debug-callpath', async (req, res) => {
-  // Scope changes don't apply to an already-minted token, and tokens are cached
-  // for ~1h — ?refreshToken=1 forces a new one without restarting the service.
   if (req.query.refreshToken) { zoomAccessToken = null; zoomTokenExpiry = 0; }
   const token = await getZoomToken();
   if (!token) return res.status(500).json({ error: 'no zoom token' });
   const auth = { headers: { Authorization: 'Bearer ' + token } };
+  const limit = Math.min(parseInt(req.query.limit) || 40, 150);
   try {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
-    const lr = await fetch(`https://api.zoom.us/v2/phone/call_history?from=${today}&to=${today}&page_size=5&type=all`, auth);
-    const listBody = await lr.text();
-    let list; try { list = JSON.parse(listBody); } catch { list = listBody; }
-    if (!lr.ok) return res.json({ listStatus: lr.status, list });
 
-    const calls = (list.call_logs || list.call_history || []);
-    if (!calls.length) return res.json({ today, note: 'no calls listed yet today' });
+    // page through today's calls
+    let calls = [];
+    let nextPage = '', pages = 0;
+    do {
+      const r = await fetch(`https://api.zoom.us/v2/phone/call_history?from=${today}&to=${today}&page_size=100&type=all`
+        + (nextPage ? `&next_page_token=${nextPage}` : ''), auth);
+      if (!r.ok) break;
+      const d = await r.json();
+      calls = calls.concat(d.call_logs || d.call_history || []);
+      nextPage = d.next_page_token || '';
+      pages++;
+    } while (nextPage && pages < 5);
 
-    // Zoom's docs contradict each other on which endpoint carries call_path and
-    // which id it takes, so probe every combination and report what each says.
-    const sample = calls[0];
-    const idCandidates = {
-      id: sample.id,
-      call_id: sample.call_id,
-      call_path_id: sample.call_path_id,
-    };
-    const urlPatterns = [
-      ['call_history/{id}',            id => `https://api.zoom.us/v2/phone/call_history/${id}`],
-      ['call_history_detail/{id}',     id => `https://api.zoom.us/v2/phone/call_history_detail/${id}`],
-      ['call_logs/{id}/call_path',     id => `https://api.zoom.us/v2/phone/call_logs/${id}/call_path`],
-      ['call_history/{id}/call_path',  id => `https://api.zoom.us/v2/phone/call_history/${id}/call_path`],
-    ];
+    // prefer calls that entered an auto receptionist — those carry the tree
+    const ivrFirst = [
+      ...calls.filter(c => c.callee_ext_type === 'auto_receptionist'),
+      ...calls.filter(c => c.callee_ext_type !== 'auto_receptionist'),
+    ].slice(0, limit);
 
-    const probes = [];
-    for (const [patName, build] of urlPatterns) {
-      for (const [idName, idVal] of Object.entries(idCandidates)) {
-        if (!idVal) { probes.push({ pattern: patName, idField: idName, skipped: 'id field empty' }); continue; }
-        try {
-          const r = await fetch(build(encodeURIComponent(idVal)), auth);
-          const body = await r.text();
-          let j; try { j = JSON.parse(body); } catch { j = body; }
-          probes.push({
-            pattern: patName,
-            idField: idName,
-            status: r.status,
-            code: j && j.code,
-            message: j && j.message,
-            topKeys: j && typeof j === 'object' ? Object.keys(j) : null,
-            hasCallPath: !!(j && j.call_path),
-            callPathLen: j && j.call_path ? j.call_path.length : 0,
-            sampleHop: j && j.call_path && j.call_path[0] ? j.call_path[0] : null,
-            parsed: j && j.call_path ? parseCallPath(j) : null,
-          });
-        } catch (e) {
-          probes.push({ pattern: patName, idField: idName, error: e.message });
-        }
-        await new Promise(r2 => setTimeout(r2, 80));
+    const tally = (m, k) => { if (k === undefined || k === null || k === '') return; m[k] = (m[k] || 0) + 1; };
+    const results = {}, events = {}, extTypes = {}, pressKeys = {}, hopCounts = {};
+    let withPressKey = 0, fetched = 0;
+    let longest = null;
+    const ivrExamples = [];
+
+    for (const c of ivrFirst) {
+      const r = await fetch(`https://api.zoom.us/v2/phone/call_history/${encodeURIComponent(c.id)}`, auth);
+      if (!r.ok) continue;
+      const detail = await r.json();
+      const path = detail.call_path || [];
+      if (!path.length) continue;
+      fetched++;
+      tally(hopCounts, path.length);
+      for (const el of path) {
+        tally(results, el.result);
+        tally(events, el.event);
+        tally(extTypes, el.callee_ext_type);
+        tally(pressKeys, el.press_key);
       }
+      const hasKey = path.some(el => el.press_key);
+      if (hasKey) withPressKey++;
+      if (!longest || path.length > longest.rawLen) {
+        longest = { id: c.id, rawLen: path.length, raw: path, parsed: parseCallPath(detail) };
+      }
+      if (hasKey && ivrExamples.length < 3) {
+        ivrExamples.push({
+          id: c.id,
+          topLevelResult: detail.call_result || c.call_result,
+          raw: path.map(el => ({
+            segment: el.segment, node: el.node, event: el.event, result: el.result,
+            callee_ext_type: el.callee_ext_type, callee_name: el.callee_name,
+            press_key: el.press_key, wait_time: el.wait_time, talk_time: el.talk_time,
+          })),
+          parsed: parseCallPath(detail),
+        });
+      }
+      await new Promise(r2 => setTimeout(r2, 60));
     }
 
-    const winner = probes.find(p2 => p2.hasCallPath);
     res.json({
       today,
-      listedCount: calls.length,
-      sampleIds: idCandidates,
-      sampleListRow: sample,
-      winner: winner ? { pattern: winner.pattern, idField: winner.idField } : null,
-      probes,
+      totalCallsToday: calls.length,
+      pathsFetched: fetched,
+      pathsWithPressKey: withPressKey,
+      autoReceptionistEntries: calls.filter(c => c.callee_ext_type === 'auto_receptionist').length,
+      distinct: { result: results, event: events, callee_ext_type: extTypes, press_key: pressKeys, hopCount: hopCounts },
+      ivrExamples,
+      longestPath: longest,
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: e.message, stack: String(e.stack).split('\n').slice(0, 3) });
   }
 });
 
