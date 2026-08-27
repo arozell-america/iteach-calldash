@@ -590,7 +590,51 @@ function CallFlowTab({ callFlow, theme }) {
         })()}
       </div>
 
-      {analyzed === 0 ? (
+      {analyzed > 0 && menus.length === 0 ? (
+        <>
+          <div style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}`, borderRadius: 12, padding: "16px 18px" }}>
+            <SectionHeader color="#FFB800" label="No phone tree on this line" theme={theme} />
+            <div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.7 }}>
+              None of these {analyzed} inbound calls passed through an auto receptionist — they ring a
+              queue or a person directly. The menus on this Zoom account belong to the other business
+              lines, which are filtered out. Below is where these calls actually landed.
+            </div>
+          </div>
+
+          <div style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}`, borderRadius: 12, padding: "12px 14px" }}>
+            <SectionHeader color={FLOW_COLORS.queue} label="Where calls landed" theme={theme} />
+            {(cf.nodes || []).length === 0 ? (
+              <div style={{ fontSize: 11, color: t.textFaint }}>No routing data yet.</div>
+            ) : (
+              <div>
+                {(cf.nodes || []).slice(0, 14).map(n => {
+                  const maxN = Math.max(...(cf.nodes || []).map(x => x.calls), 1);
+                  const lostN = n.abandoned || 0;
+                  const rate = n.calls > 0 ? Math.round((lostN / n.calls) * 100) : 0;
+                  return (
+                    <div key={n.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+                      <div style={{ width: 190, flexShrink: 0, minWidth: 0 }}>
+                        <TargetChip kind={n.kind} label={n.label} theme={theme} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 60 }}>
+                        <div style={{ height: 12, borderRadius: 4, background: t.chipBg, overflow: "hidden", width: `${Math.max(2, (n.calls / maxN) * 100)}%`, display: "flex" }}>
+                          {n.answered > 0 && <div style={{ flex: n.answered, background: FLOW_COLORS.answered }} />}
+                          {lostN > 0 && <div style={{ flex: lostN, background: FLOW_COLORS.abandoned }} />}
+                        </div>
+                      </div>
+                      <div style={{ width: 40, flexShrink: 0, textAlign: "right", fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 700, color: t.text }}>{n.calls}</div>
+                      <div style={{ width: 116, flexShrink: 0, textAlign: "right", fontSize: 10, color: t.textMuted }}>
+                        <span style={{ color: FLOW_COLORS.answered, fontWeight: 700 }}>{n.answered}</span> answered
+                        {lostN > 0 && <> · <span style={{ color: rate >= 40 ? FLOW_COLORS.abandoned : t.textMuted, fontWeight: rate >= 40 ? 700 : 400 }}>{rate}% lost</span></>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      ) : analyzed === 0 ? (
         <div style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}`, borderRadius: 12, padding: "34px 20px", textAlign: "center" }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 6 }}>No call paths traced yet</div>
           <div style={{ fontSize: 11, color: t.textMuted, maxWidth: 460, margin: "0 auto", lineHeight: 1.6 }}>
