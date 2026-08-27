@@ -417,8 +417,8 @@ function TargetChip({ kind, label, theme }) {
   const color = FLOW_COLORS[kind] || FLOW_COLORS.other;
   const icon = kind === "menu" ? "submenu" : kind === "queue" ? "queue" : kind === "agent" ? "direct" : kind;
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0 }}>
-      <span style={{ fontSize: 12, fontWeight: 700, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0, maxWidth: "100%" }}>
+      <span style={{ fontSize: 12, fontWeight: 700, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{label}</span>
       <span style={{
         fontSize: 7, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase",
         color, background: color + "22", borderRadius: 4, padding: "1px 5px", flexShrink: 0,
@@ -467,7 +467,7 @@ function FlowOption({ option, maxCalls, theme, isZcc }) {
 
       <div style={{ width: 14, flexShrink: 0, textAlign: "center", color: t.textFaint, fontSize: 11 }}>→</div>
 
-      <div style={{ width: 170, flexShrink: 0, minWidth: 0 }}>
+      <div style={{ width: 232, flexShrink: 0, minWidth: 0, overflow: "hidden" }}>
         <TargetChip kind={targetKind} label={target} theme={theme} />
       </div>
 
@@ -535,7 +535,7 @@ function MenuBlock({ menu, theme, isZcc }) {
               fontSize: 12, color: t.textFaint,
             }}>✕</div>
             <div style={{ width: 14, flexShrink: 0 }} />
-            <div style={{ width: 170, flexShrink: 0, fontSize: 12, fontWeight: 700, color: FLOW_COLORS.abandoned }}>{isZcc ? "Left during flow" : "Hung up at menu"}</div>
+            <div style={{ width: 232, flexShrink: 0, fontSize: 12, fontWeight: 700, color: FLOW_COLORS.abandoned }}>{isZcc ? "Left during flow" : "Hung up at menu"}</div>
             <div style={{ flex: 1, minWidth: 80 }}>
               <div style={{ height: 14, borderRadius: 4, background: FLOW_COLORS.abandoned, width: `${Math.max(2, (menu.droppedHere / maxCalls) * 100)}%` }} />
             </div>
