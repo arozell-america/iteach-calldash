@@ -438,31 +438,67 @@ app.get('/api/debug-callpath', async (req, res) => {
   const token = await getZoomToken();
   if (!token) return res.status(500).json({ error: 'no zoom token' });
   const auth = { headers: { Authorization: 'Bearer ' + token } };
-  const limit = Math.min(parseInt(req.query.limit) || 3, 10);
   try {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
-    const lr = await fetch(`https://api.zoom.us/v2/phone/call_history?from=${today}&to=${today}&page_size=${limit}&type=all`, auth);
+    const lr = await fetch(`https://api.zoom.us/v2/phone/call_history?from=${today}&to=${today}&page_size=5&type=all`, auth);
     const listBody = await lr.text();
     let list; try { list = JSON.parse(listBody); } catch { list = listBody; }
     if (!lr.ok) return res.json({ listStatus: lr.status, list });
 
-    const calls = (list.call_logs || list.call_history || []).slice(0, limit);
-    const out = [];
-    for (const c of calls) {
-      const id = cfCallId(c);
-      const dr = await fetch(`https://api.zoom.us/v2/phone/call_history/${encodeURIComponent(id)}`, auth);
-      const body = await dr.text();
-      let detail; try { detail = JSON.parse(body); } catch { detail = body; }
-      out.push({
-        id,
-        detailStatus: dr.status,
-        listKeys: Object.keys(c),
-        detailKeys: detail && typeof detail === 'object' ? Object.keys(detail) : null,
-        rawCallPath: detail && detail.call_path,
-        parsed: (detail && typeof detail === 'object') ? parseCallPath(detail) : null,
-      });
+    const calls = (list.call_logs || list.call_history || []);
+    if (!calls.length) return res.json({ today, note: 'no calls listed yet today' });
+
+    // Zoom's docs contradict each other on which endpoint carries call_path and
+    // which id it takes, so probe every combination and report what each says.
+    const sample = calls[0];
+    const idCandidates = {
+      id: sample.id,
+      call_id: sample.call_id,
+      call_path_id: sample.call_path_id,
+    };
+    const urlPatterns = [
+      ['call_history/{id}',            id => `https://api.zoom.us/v2/phone/call_history/${id}`],
+      ['call_history_detail/{id}',     id => `https://api.zoom.us/v2/phone/call_history_detail/${id}`],
+      ['call_logs/{id}/call_path',     id => `https://api.zoom.us/v2/phone/call_logs/${id}/call_path`],
+      ['call_history/{id}/call_path',  id => `https://api.zoom.us/v2/phone/call_history/${id}/call_path`],
+    ];
+
+    const probes = [];
+    for (const [patName, build] of urlPatterns) {
+      for (const [idName, idVal] of Object.entries(idCandidates)) {
+        if (!idVal) { probes.push({ pattern: patName, idField: idName, skipped: 'id field empty' }); continue; }
+        try {
+          const r = await fetch(build(encodeURIComponent(idVal)), auth);
+          const body = await r.text();
+          let j; try { j = JSON.parse(body); } catch { j = body; }
+          probes.push({
+            pattern: patName,
+            idField: idName,
+            status: r.status,
+            code: j && j.code,
+            message: j && j.message,
+            topKeys: j && typeof j === 'object' ? Object.keys(j) : null,
+            hasCallPath: !!(j && j.call_path),
+            callPathLen: j && j.call_path ? j.call_path.length : 0,
+            sampleHop: j && j.call_path && j.call_path[0] ? j.call_path[0] : null,
+            parsed: j && j.call_path ? parseCallPath(j) : null,
+          });
+        } catch (e) {
+          probes.push({ pattern: patName, idField: idName, error: e.message });
+        }
+        await new Promise(r2 => setTimeout(r2, 80));
+      }
     }
-    res.json({ today, listedCount: calls.length, calls: out, cacheSize: callPathCache.size });
+
+    const winner = probes.find(p2 => p2.hasCallPath);
+    res.json({
+      today,
+      listedCount: calls.length,
+      sampleIds: idCandidates,
+      sampleListRow: sample,
+      winner: winner ? { pattern: winner.pattern, idField: winner.idField } : null,
+      probes,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
