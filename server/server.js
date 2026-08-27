@@ -435,6 +435,9 @@ app.get('/api/debug-powerpack', async (req, res) => {
 });
 
 app.get('/api/debug-callpath', async (req, res) => {
+  // Scope changes don't apply to an already-minted token, and tokens are cached
+  // for ~1h — ?refreshToken=1 forces a new one without restarting the service.
+  if (req.query.refreshToken) { zoomAccessToken = null; zoomTokenExpiry = 0; }
   const token = await getZoomToken();
   if (!token) return res.status(500).json({ error: 'no zoom token' });
   const auth = { headers: { Authorization: 'Bearer ' + token } };
