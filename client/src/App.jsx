@@ -579,6 +579,15 @@ function CallFlowTab({ callFlow, theme }) {
       </div>
       <div style={{ fontSize: 9, color: t.textFaint, marginTop: -6 }}>
         {updated ? `Updated ${updated}` : "Waiting for first poll"} · inbound only · {analyzed} paths traced
+        {cf.siteFilter?.length > 0 && (() => {
+          const excluded = Object.entries(cf.sitesSeen || {})
+            .filter(([name]) => !cf.sitesIncluded?.[name])
+            .sort((a, b) => b[1] - a[1]);
+          const n = excluded.reduce((sum, [, c]) => sum + c, 0);
+          return n > 0
+            ? ` · ${n} calls hidden from other business lines (${excluded.map(([nm, c]) => `${nm} ${c}`).join(", ")})`
+            : ` · site: ${cf.siteFilter.join(", ")}`;
+        })()}
       </div>
 
       {analyzed === 0 ? (

@@ -62,6 +62,7 @@ const state = {
   callFlow: {
     updatedAt: null, analyzed: 0, pending: 0, queued: 0,
     enteredTree: 0, treeAnswered: 0, menus: [], nodes: [], edges: [], entries: [],
+    sitesSeen: {}, sitesIncluded: {}, siteFilter: [],
     outcomes: { answered: 0, abandoned: 0, missed: 0, voicemail: 0, other: 0 },
     droppedInMenu: 0,
   },
@@ -502,8 +503,23 @@ app.get('/api/debug-callpath', async (req, res) => {
       await new Promise(r2 => setTimeout(r2, 60));
     }
 
+    const siteTally = {};
+    for (const c of calls) {
+      const k = `${c.site_name || '(none)'}${cfSiteAllowed(c.site_name) ? '  [KEPT]' : '  [excluded]'}`;
+      siteTally[k] = (siteTally[k] || 0) + 1;
+    }
+    const menusBySite = {};
+    for (const c of calls) {
+      if (c.callee_ext_type !== 'auto_receptionist') continue;
+      const k = `${c.site_name || '(none)'} :: ${c.callee_name}`;
+      menusBySite[k] = (menusBySite[k] || 0) + 1;
+    }
+
     res.json({
       today,
+      siteFilter: CALLFLOW_SITES,
+      sites: siteTally,
+      autoReceptionistsBySite: menusBySite,
       totalCallsToday: calls.length,
       pathsFetched: fetched,
       pathsWithPressKey: withPressKey,
@@ -1240,6 +1256,20 @@ console.log('[Queues] Full poll every 60s, live poll every 15s');
 const callPathCache = new Map();   // callLogId -> parsed summary
 const callPathFailed = new Set();  // ids that returned no usable path — don't retry forever
 
+// This Zoom account carries several business lines (Teaching Channel, Learners
+// Edge, KTL, Passage Prep...). The board should only show iTeach's own tree, so
+// calls are matched against the site allowlist below. Substring, case-insensitive,
+// so "iteach" also catches "iTeach TX". Override with CALLFLOW_SITES=a,b,c.
+const CALLFLOW_SITES = (process.env.CALLFLOW_SITES || 'iteach')
+  .split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+
+function cfSiteAllowed(siteName) {
+  if (!CALLFLOW_SITES.length) return true;
+  const s = (siteName || '').toLowerCase();
+  if (!s) return false;                     // unknown site: exclude, don't guess
+  return CALLFLOW_SITES.some(tok => s.includes(tok));
+}
+
 const CALLFLOW_MAX_DETAIL_PER_CYCLE = 40;  // cap detail fetches per poll
 const CALLFLOW_DETAIL_SPACING_MS = 60;     // gentle spacing between detail calls
 const CALLFLOW_MAX_LIST_PAGES = 10;
@@ -1482,6 +1512,8 @@ async function pollCallFlow() {
 
     // 1. list today's calls
     const ids = [];
+    const sitesSeen = {};      // every site on the account, with counts
+    const sitesIncluded = {};  // the subset that passed the allowlist
     let nextPage = '';
     let pages = 0;
     do {
@@ -1498,6 +1530,10 @@ async function pollCallFlow() {
         // internal calls burned the per-cycle budget and dragged unrelated
         // outcomes into the answer rate.
         if ((c.direction || '').toLowerCase() !== 'inbound') continue;
+        const site = c.site_name || '(none)';
+        sitesSeen[site] = (sitesSeen[site] || 0) + 1;
+        if (!cfSiteAllowed(c.site_name)) continue;
+        sitesIncluded[site] = (sitesIncluded[site] || 0) + 1;
         const id = cfCallId(c);
         if (id) ids.push(id);
       }
@@ -1526,8 +1562,11 @@ async function pollCallFlow() {
 
     state.callFlow = aggregateCallFlow();
     state.callFlow.queued = Math.max(0, todo.length - batch.length);
+    state.callFlow.sitesSeen = sitesSeen;
+    state.callFlow.sitesIncluded = sitesIncluded;
+    state.callFlow.siteFilter = CALLFLOW_SITES;
 
-    console.log(`[CallFlow] ${ids.length} inbound today, +${fetched} paths this cycle, ${callPathCache.size} cached, ${state.callFlow.enteredTree} via menu, ${state.callFlow.queued} queued`);
+    console.log(`[CallFlow] sites=${JSON.stringify(sitesSeen)} -> kept ${ids.length} inbound (filter: ${CALLFLOW_SITES.join('|')}), +${fetched} paths, ${state.callFlow.enteredTree} via menu, ${state.callFlow.queued} queued`);
     broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
   } catch (e) {
     console.log('[CallFlow] error:', e.message);
