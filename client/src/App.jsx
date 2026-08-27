@@ -550,7 +550,11 @@ function CallFlowTab({ callFlow, theme }) {
   const abandoned = outcomes.abandoned || 0;
   const missed = outcomes.missed || 0;
   const lost = abandoned + missed;
-  const answerRate = analyzed > 0 ? Math.round((answered / analyzed) * 100) : 0;
+  const enteredTree = cf.enteredTree || 0;
+  const treeAnswered = cf.treeAnswered || 0;
+  // Rate is over calls that actually went through the tree — direct dials that
+  // never hit a menu would otherwise distort it.
+  const answerRate = enteredTree > 0 ? Math.round((treeAnswered / enteredTree) * 100) : 0;
 
   const updated = cf.updatedAt
     ? new Date(cf.updatedAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
@@ -568,10 +572,13 @@ function CallFlowTab({ callFlow, theme }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <KpiTile label="Calls Traced" value={analyzed} color="#038CF1" sub={updated ? `as of ${updated}` : "waiting for first poll"} size="large" theme={theme} />
-        <KpiTile label="Answer Rate" value={`${answerRate}%`} color={answerRate >= 85 ? "#22C55E" : answerRate >= 70 ? "#FFB800" : "#FF3B5C"} sub={`${answered} of ${analyzed}`} size="large" theme={theme} />
+        <KpiTile label="Through Menu" value={enteredTree} color="#038CF1" sub={`of ${analyzed} inbound traced`} size="large" theme={theme} />
+        <KpiTile label="Answer Rate" value={enteredTree > 0 ? `${answerRate}%` : "—"} color={answerRate >= 85 ? "#22C55E" : answerRate >= 70 ? "#FFB800" : "#FF3B5C"} sub={enteredTree > 0 ? `${treeAnswered} of ${enteredTree} via menu` : "no menu calls yet"} size="large" theme={theme} />
         <KpiTile label="Lost" value={lost} color={FLOW_COLORS.abandoned} sub={`${abandoned} gave up · ${missed} rang out`} size="large" theme={theme} />
         <KpiTile label="Lost In Menu" value={cf.droppedInMenu || 0} color="#FFB800" sub="never reached a queue" size="large" theme={theme} />
+      </div>
+      <div style={{ fontSize: 9, color: t.textFaint, marginTop: -6 }}>
+        {updated ? `Updated ${updated}` : "Waiting for first poll"} · inbound only · {analyzed} paths traced
       </div>
 
       {analyzed === 0 ? (

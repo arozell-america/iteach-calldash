@@ -61,7 +61,7 @@ const state = {
   },
   callFlow: {
     updatedAt: null, analyzed: 0, pending: 0, queued: 0,
-    menus: [], nodes: [], edges: [], entries: [],
+    enteredTree: 0, treeAnswered: 0, menus: [], nodes: [], edges: [], entries: [],
     outcomes: { answered: 0, abandoned: 0, missed: 0, voicemail: 0, other: 0 },
     droppedInMenu: 0,
   },
@@ -1366,6 +1366,8 @@ function aggregateCallFlow() {
   const entryMap = new Map();
   let droppedInMenu = 0;
   let analyzed = 0;
+  let enteredTree = 0;      // calls that actually hit a menu
+  let treeAnswered = 0;
 
   for (const summary of callPathCache.values()) {
     if (!summary) continue;
@@ -1375,6 +1377,10 @@ function aggregateCallFlow() {
 
     const first = summary.hops[0];
     if (first) entryMap.set(first.label, (entryMap.get(first.label) || 0) + 1);
+    if (summary.hops.some(h => h.kind === 'menu')) {
+      enteredTree++;
+      if (summary.outcome === 'answered') treeAnswered++;
+    }
 
     summary.hops.forEach((hop, i) => {
       const id = `${hop.kind}:${hop.label}`;
@@ -1453,6 +1459,8 @@ function aggregateCallFlow() {
   return {
     updatedAt: Date.now(),
     analyzed,
+    enteredTree,
+    treeAnswered,
     menus,
     pending: Math.max(0, callPathCache.size - analyzed),
     nodes,
@@ -1486,6 +1494,10 @@ async function pollCallFlow() {
       }
       const d = await r.json();
       for (const c of (d.call_logs || d.call_history || [])) {
+        // The phone tree only exists for inbound calls. Tracing outbound and
+        // internal calls burned the per-cycle budget and dragged unrelated
+        // outcomes into the answer rate.
+        if ((c.direction || '').toLowerCase() !== 'inbound') continue;
         const id = cfCallId(c);
         if (id) ids.push(id);
       }
@@ -1515,7 +1527,7 @@ async function pollCallFlow() {
     state.callFlow = aggregateCallFlow();
     state.callFlow.queued = Math.max(0, todo.length - batch.length);
 
-    console.log(`[CallFlow] ${ids.length} calls today, +${fetched} paths this cycle, ${callPathCache.size} cached, ${state.callFlow.queued} queued`);
+    console.log(`[CallFlow] ${ids.length} inbound today, +${fetched} paths this cycle, ${callPathCache.size} cached, ${state.callFlow.enteredTree} via menu, ${state.callFlow.queued} queued`);
     broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
   } catch (e) {
     console.log('[CallFlow] error:', e.message);
