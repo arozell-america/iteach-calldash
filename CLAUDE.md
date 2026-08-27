@@ -80,6 +80,8 @@ DynamoDB (us-east-1, calldash-agents table) --> Persistent manual agent roster
 
 **UI structure:** Two tabs — `LiveTab` (KPI tiles, `QueueHealthBanner`, `StatusChips`, agent card grid) and `PerformanceTab` (`HourlyChart`, `InsightsPanel`, `AgentPerfRow` table). Header carries a light/dark theme toggle (`theme` state) and the tab bar carries a Compact/Expanded toggle that controls agent card density.
 
+**Phone tree (Call Flow tab):** Zoom emits **no webhooks while a caller is inside an IVR / auto receptionist** — a confirmed platform limitation, not a gap in this code. The path only becomes readable after a call completes, via `GET /phone/call_history/{callLogId}`, whose `call_path` array carries `press_key` and `callee_ext_type` per hop. So the Call Flow tab is a rolling picture of today running ~3 min behind, not a live tracker. Detail is one request per call, so paths are cached by call id in `callPathCache` and never refetched; the cache clears at the midnight reset. `aggregateCallFlow()` rolls the cache into a per-menu structure (`menus[].options[]`) that the client draws directly. Field access goes through `cfPick()` because Zoom's Phone endpoints are inconsistent about naming.
+
 **Queue health banner:** `QueueHealthBanner` derives a green/amber/red level from queue depth and wait time — green renders "OPERATING NORMALLY" alongside the live clock.
 
 **WebSocket protocol:** Server broadcasts `{ type: "STATE_UPDATE", payload: { agents, queues, stats, hourlyVolume, zoomQueues, sfPipeline, timestamp } }` (see `getPublicState()` in server.js) to all connected clients on every state change. Clients auto-reconnect on disconnect (3s delay).
@@ -95,6 +97,7 @@ DynamoDB (us-east-1, calldash-agents table) --> Persistent manual agent roster
 | Zoom call queue full poll | 60s | 15s after boot |
 | Zoom live queue poll | 15s | — |
 | Salesforce pipeline poll | 5min | 20s after boot |
+| Phone tree / call flow poll | 3min | 30s after boot |
 | Calls-before-enrollment compute | 24h | with first pipeline poll |
 | Keep-alive self-ping | 10min | immediate |
 | Zoom token refresh | on-demand (cached until ~1min before expiry) | — |
@@ -122,6 +125,7 @@ Both auto-deploy from `main` branch on push to GitHub:
 | GET | `/api/debug-sf` | Debug Salesforce queries and field shapes |
 | GET | `/api/debug-queues` | Debug Zoom call queue responses |
 | GET | `/api/debug-powerpack` | Debug Zoom Power Pack API responses |
+| GET | `/api/debug-callpath` | Dump raw `call_path` + parsed result for today's calls (`?limit=N`, max 10) |
 | POST | `/webhook/zoom` | Zoom webhook receiver (also handles URL validation challenge) |
 | GET | `/health` | Health check (returns agent count) |
 

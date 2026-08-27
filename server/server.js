@@ -59,6 +59,12 @@ const state = {
     callQuality: { mos: 0, jitter: 0, latency: 0, packetLoss: 0 },
     queues: [],
   },
+  callFlow: {
+    updatedAt: null, analyzed: 0, pending: 0, queued: 0,
+    menus: [], nodes: [], edges: [], entries: [],
+    outcomes: { answered: 0, abandoned: 0, voicemail: 0, forwarded: 0, other: 0 },
+    droppedInMenu: 0,
+  },
 };
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
@@ -156,6 +162,7 @@ function getPublicState() {
     hourlyVolume: state.hourlyVolume,
     zoomQueues: state.zoomQueues,
     sfPipeline: state.sfPipeline || {},
+    callFlow: state.callFlow || { menus: [], nodes: [], edges: [], entries: [], outcomes: {}, analyzed: 0 },
     timestamp: Date.now(),
   };
 }
@@ -425,6 +432,40 @@ app.get('/api/debug-powerpack', async (req, res) => {
 
     res.json({ tokenOk: !!token, scopes, endpoints: results, currentZoomQueues: state.zoomQueues });
   } catch(e) { res.json({ error: e.message }); }
+});
+
+app.get('/api/debug-callpath', async (req, res) => {
+  const token = await getZoomToken();
+  if (!token) return res.status(500).json({ error: 'no zoom token' });
+  const auth = { headers: { Authorization: 'Bearer ' + token } };
+  const limit = Math.min(parseInt(req.query.limit) || 3, 10);
+  try {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+    const lr = await fetch(`https://api.zoom.us/v2/phone/call_history?from=${today}&to=${today}&page_size=${limit}&type=all`, auth);
+    const listBody = await lr.text();
+    let list; try { list = JSON.parse(listBody); } catch { list = listBody; }
+    if (!lr.ok) return res.json({ listStatus: lr.status, list });
+
+    const calls = (list.call_logs || list.call_history || []).slice(0, limit);
+    const out = [];
+    for (const c of calls) {
+      const id = cfCallId(c);
+      const dr = await fetch(`https://api.zoom.us/v2/phone/call_history/${encodeURIComponent(id)}`, auth);
+      const body = await dr.text();
+      let detail; try { detail = JSON.parse(body); } catch { detail = body; }
+      out.push({
+        id,
+        detailStatus: dr.status,
+        listKeys: Object.keys(c),
+        detailKeys: detail && typeof detail === 'object' ? Object.keys(detail) : null,
+        rawCallPath: detail && detail.call_path,
+        parsed: (detail && typeof detail === 'object') ? parseCallPath(detail) : null,
+      });
+    }
+    res.json({ today, listedCount: calls.length, calls: out, cacheSize: callPathCache.size });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get('/api/debug-sf', async (req, res) => {
@@ -1135,6 +1176,272 @@ setInterval(pollCallQueues, 60 * 1000);
 setInterval(pollLiveQueues, 15 * 1000);
 console.log('[Queues] Full poll every 60s, live poll every 15s');
 
+// ─── Phone Tree / Call Flow ──────────────────────────────────────────────────
+//
+// Zoom does NOT emit webhooks while a caller sits in an IVR / auto receptionist
+// (confirmed limitation — no real-time events for menu traversal). The full path
+// only becomes readable once the call completes, via the call_history DETAIL
+// endpoint, which returns a `call_path` array carrying `press_key` and
+// `callee_ext_type` per hop.
+//
+// So this is a rolling picture of today, ~3 min behind, not a live tracker.
+// Detail is one request per call, so results are cached by call id and never
+// refetched; the cache clears at the midnight reset.
+
+const callPathCache = new Map();   // callLogId -> parsed summary
+const callPathFailed = new Set();  // ids that returned no usable path — don't retry forever
+
+const CALLFLOW_MAX_DETAIL_PER_CYCLE = 40;  // cap detail fetches per poll
+const CALLFLOW_DETAIL_SPACING_MS = 60;     // gentle spacing between detail calls
+const CALLFLOW_MAX_LIST_PAGES = 10;
+
+// Zoom is inconsistent about id/field naming across Phone endpoints, so read
+// tolerantly rather than assuming one spelling.
+function cfPick(obj, ...keys) {
+  for (const k of keys) {
+    if (obj && obj[k] !== undefined && obj[k] !== null && obj[k] !== '') return obj[k];
+  }
+  return null;
+}
+
+function cfCallId(call) {
+  return cfPick(call, 'id', 'call_log_id', 'call_id');
+}
+
+function cfHopLabel(el) {
+  const type = (cfPick(el, 'callee_ext_type', 'ext_type', 'callee_type') || '').toLowerCase();
+  const name = cfPick(el, 'callee_name', 'callee_ext_name', 'name', 'callee_did_number') || 'Unknown';
+  if (type === 'auto_receptionist') return { kind: 'menu',  label: name };
+  if (type === 'call_queue')        return { kind: 'queue', label: name };
+  if (type === 'user')              return { kind: 'agent', label: name };
+  if (type === 'voicemail')         return { kind: 'voicemail', label: name };
+  if (!type) return null;
+  return { kind: 'other', label: name };
+}
+
+function cfOutcome(result) {
+  const r = (result || '').toLowerCase();
+  if (!r) return 'other';
+  if (r.includes('voicemail')) return 'voicemail';
+  if (r.includes('answer') || r.includes('connect') || r.includes('succeed')) return 'answered';
+  if (r.includes('abandon') || r.includes('hang') || r.includes('cancel') || r.includes('miss') || r.includes('no_answer')) return 'abandoned';
+  if (r.includes('forward') || r.includes('transfer')) return 'forwarded';
+  return 'other';
+}
+
+// Turn one call's raw call_path into an ordered hop list + outcome.
+function parseCallPath(detail) {
+  const raw = detail.call_path || detail.call_logs || detail.path || [];
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+
+  // segment = sequential leg, node = parallel branch (1 = path taken,
+  // 0 = unsuccessful attempt). Follow node 1 where present.
+  const primary = raw.filter(el => {
+    const node = cfPick(el, 'node');
+    return node === undefined || node === null || Number(node) !== 0;
+  });
+  const ordered = (primary.length ? primary : raw)
+    .slice()
+    .sort((a, b) => Number(cfPick(a, 'segment') || 0) - Number(cfPick(b, 'segment') || 0));
+
+  const hops = [];
+  for (const el of ordered) {
+    const hop = cfHopLabel(el);
+    if (!hop) continue;
+    const pressKey = cfPick(el, 'press_key', 'pressed_key', 'dtmf');
+    const last = hops[hops.length - 1];
+    // collapse consecutive duplicates (same element can repeat across nodes)
+    if (last && last.label === hop.label && last.kind === hop.kind) {
+      if (pressKey && !last.pressKey) last.pressKey = String(pressKey);
+      continue;
+    }
+    hops.push({ ...hop, pressKey: pressKey ? String(pressKey) : null, result: cfPick(el, 'result') });
+  }
+  if (hops.length === 0) return null;
+
+  const finalResult = cfPick(ordered[ordered.length - 1], 'result') || cfPick(detail, 'call_result', 'result');
+  const outcome = cfOutcome(finalResult);
+  const lastHop = hops[hops.length - 1];
+
+  return {
+    hops,
+    outcome,
+    // caller hung up while still inside the menu — never reached a queue or agent
+    droppedInMenu: outcome === 'abandoned' && lastHop.kind === 'menu',
+    durationSec: Number(cfPick(detail, 'duration') || 0),
+    waitSec: Number(cfPick(detail, 'waiting_time', 'wait_time') || 0),
+    direction: cfPick(detail, 'direction'),
+  };
+}
+
+// Roll every cached call up into a node/edge graph the client can draw.
+function aggregateCallFlow() {
+  const nodeMap = new Map();  // label -> node
+  const edgeMap = new Map();  // from||to||key -> edge
+  const outcomes = { answered: 0, abandoned: 0, voicemail: 0, forwarded: 0, other: 0 };
+  const entryMap = new Map();
+  let droppedInMenu = 0;
+  let analyzed = 0;
+
+  for (const summary of callPathCache.values()) {
+    if (!summary) continue;
+    analyzed++;
+    outcomes[summary.outcome] = (outcomes[summary.outcome] || 0) + 1;
+    if (summary.droppedInMenu) droppedInMenu++;
+
+    const first = summary.hops[0];
+    if (first) entryMap.set(first.label, (entryMap.get(first.label) || 0) + 1);
+
+    summary.hops.forEach((hop, i) => {
+      const id = `${hop.kind}:${hop.label}`;
+      if (!nodeMap.has(id)) {
+        nodeMap.set(id, { id, kind: hop.kind, label: hop.label, calls: 0, answered: 0, abandoned: 0, depth: i });
+      }
+      const n = nodeMap.get(id);
+      n.calls++;
+      n.depth = Math.min(n.depth, i);
+      // credit the outcome to the hop the call actually ended on
+      if (i === summary.hops.length - 1) {
+        if (summary.outcome === 'answered') n.answered++;
+        else if (summary.outcome === 'abandoned') n.abandoned++;
+      }
+
+      const next = summary.hops[i + 1];
+      if (next) {
+        const key = hop.pressKey || '';
+        const eid = `${hop.kind}:${hop.label}|${next.kind}:${next.label}|${key}`;
+        if (!edgeMap.has(eid)) {
+          edgeMap.set(eid, {
+            id: eid,
+            from: id,
+            to: `${next.kind}:${next.label}`,
+            pressKey: key || null,
+            calls: 0,
+          });
+        }
+        edgeMap.get(eid).calls++;
+      }
+    });
+  }
+
+  // Per-menu rollup — what each IVR option actually produced. This is the
+  // shape the flow board draws, so the client never has to walk the graph.
+  const menuMap = new Map();
+  const touchMenu = (label) => {
+    if (!menuMap.has(label)) menuMap.set(label, { label, calls: 0, droppedHere: 0, options: new Map() });
+    return menuMap.get(label);
+  };
+
+  for (const summary of callPathCache.values()) {
+    if (!summary) continue;
+    summary.hops.forEach((hop, i) => {
+      if (hop.kind !== 'menu') return;
+      const menu = touchMenu(hop.label);
+      menu.calls++;
+      const next = summary.hops[i + 1];
+      if (!next) { menu.droppedHere++; return; }
+      const key = hop.pressKey || null;
+      const oid = `${key || '-'}|${next.kind}:${next.label}`;
+      if (!menu.options.has(oid)) {
+        menu.options.set(oid, {
+          id: oid, pressKey: key, target: next.label, targetKind: next.kind,
+          calls: 0, answered: 0, abandoned: 0, voicemail: 0, other: 0,
+        });
+      }
+      const opt = menu.options.get(oid);
+      opt.calls++;
+      // attribute the call's FINAL outcome to the option the caller chose
+      if (opt[summary.outcome] !== undefined) opt[summary.outcome]++;
+      else opt.other++;
+    });
+  }
+
+  const menus = [...menuMap.values()]
+    .map(m => ({
+      ...m,
+      options: [...m.options.values()].sort((a, b) => b.calls - a.calls),
+    }))
+    .sort((a, b) => b.calls - a.calls);
+
+  const nodes = [...nodeMap.values()].sort((a, b) => a.depth - b.depth || b.calls - a.calls);
+  const edges = [...edgeMap.values()].sort((a, b) => b.calls - a.calls);
+
+  return {
+    updatedAt: Date.now(),
+    analyzed,
+    menus,
+    pending: Math.max(0, callPathCache.size - analyzed),
+    nodes,
+    edges,
+    outcomes,
+    droppedInMenu,
+    entries: [...entryMap.entries()].map(([label, calls]) => ({ label, calls })).sort((a, b) => b.calls - a.calls),
+  };
+}
+
+async function pollCallFlow() {
+  if (!ZOOM_ACCOUNT_ID || !ZOOM_CLIENT_ID || !ZOOM_CLIENT_SECRET) return;
+  const token = await getZoomToken();
+  if (!token) return;
+  const auth = { headers: { Authorization: 'Bearer ' + token } };
+
+  try {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+
+    // 1. list today's calls
+    const ids = [];
+    let nextPage = '';
+    let pages = 0;
+    do {
+      const url = `https://api.zoom.us/v2/phone/call_history?from=${today}&to=${today}&page_size=100&type=all`
+        + (nextPage ? `&next_page_token=${nextPage}` : '');
+      const r = await fetch(url, auth);
+      if (!r.ok) {
+        console.log('[CallFlow] list failed:', r.status);
+        break;
+      }
+      const d = await r.json();
+      for (const c of (d.call_logs || d.call_history || [])) {
+        const id = cfCallId(c);
+        if (id) ids.push(id);
+      }
+      nextPage = d.next_page_token || '';
+      pages++;
+    } while (nextPage && pages < CALLFLOW_MAX_LIST_PAGES);
+
+    // 2. fetch detail only for calls we have never resolved
+    const todo = ids.filter(id => !callPathCache.has(id) && !callPathFailed.has(id));
+    const batch = todo.slice(0, CALLFLOW_MAX_DETAIL_PER_CYCLE);
+
+    let fetched = 0;
+    for (const id of batch) {
+      try {
+        const r = await fetch(`https://api.zoom.us/v2/phone/call_history/${encodeURIComponent(id)}`, auth);
+        if (!r.ok) { callPathFailed.add(id); continue; }
+        const detail = await r.json();
+        const summary = parseCallPath(detail);
+        if (summary) { callPathCache.set(id, summary); fetched++; }
+        else callPathFailed.add(id);
+      } catch {
+        callPathFailed.add(id);
+      }
+      if (CALLFLOW_DETAIL_SPACING_MS) await new Promise(res => setTimeout(res, CALLFLOW_DETAIL_SPACING_MS));
+    }
+
+    state.callFlow = aggregateCallFlow();
+    state.callFlow.queued = Math.max(0, todo.length - batch.length);
+
+    console.log(`[CallFlow] ${ids.length} calls today, +${fetched} paths this cycle, ${callPathCache.size} cached, ${state.callFlow.queued} queued`);
+    broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
+  } catch (e) {
+    console.log('[CallFlow] error:', e.message);
+  }
+}
+
+setTimeout(pollCallFlow, 30000);
+setInterval(pollCallFlow, 3 * 60 * 1000);
+console.log('[CallFlow] Phone tree poll every 3 min (post-call — Zoom has no live IVR events)');
+
 // ─── Daily Midnight Reset ────────────────────────────────────────────────────
 
 function scheduleMidnightReset() {
@@ -1159,7 +1466,10 @@ function scheduleMidnightReset() {
     state.stats.greatCallsToday = 0;
     state.hourlyVolume = new Array(24).fill(0);
     state.callDurations = [];
-  state.longestCallAgent = null;
+    state.longestCallAgent = null;
+    callPathCache.clear();
+    callPathFailed.clear();
+    state.callFlow = aggregateCallFlow();
     saveState();
     broadcast({ type: 'STATE_UPDATE', payload: getPublicState() });
     console.log('[Reset] Daily reset complete');

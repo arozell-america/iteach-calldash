@@ -394,6 +394,222 @@ function LiveTab({ manualAgents, tick, stats, zoomQueues, expanded, theme, statu
   );
 }
 
+// ─── Call Flow Tab (phone tree) ──────────────────────────────────────────────
+// Zoom emits no webhooks while a caller is inside the IVR, so this is built from
+// the call_history detail endpoint after each call completes — a rolling picture
+// of today, a few minutes behind, not a live tracker.
+
+const FLOW_COLORS = {
+  answered:  "#22C55E",
+  abandoned: "#FF3B5C",
+  voicemail: "#A78BFA",
+  forwarded: "#FFB800",
+  other:     "#64748B",
+  menu:      "#038CF1",
+  queue:     "#00BEA8",
+  // not the brand lime — #C1FD34 on the light theme's white cards is unreadable
+  agent:     "#F97316",
+};
+
+function TargetChip({ kind, label, theme }) {
+  const t = THEMES[theme];
+  const color = FLOW_COLORS[kind] || FLOW_COLORS.other;
+  const icon = kind === "menu" ? "submenu" : kind === "queue" ? "queue" : kind === "agent" ? "direct" : kind;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+      <span style={{ fontSize: 12, fontWeight: 700, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+      <span style={{
+        fontSize: 7, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase",
+        color, background: color + "22", borderRadius: 4, padding: "1px 5px", flexShrink: 0,
+      }}>{icon}</span>
+    </span>
+  );
+}
+
+// One IVR option: the key pressed, where it went, and how those calls ended.
+function FlowOption({ option, maxCalls, theme }) {
+  const t = THEMES[theme];
+  const { pressKey, target, targetKind, calls, answered, abandoned, voicemail } = option;
+  const lossRate = calls > 0 ? Math.round((abandoned / calls) * 100) : 0;
+  const isBleeding = calls >= 5 && lossRate >= 25;
+  const widthPct = maxCalls > 0 ? Math.max(2, (calls / maxCalls) * 100) : 0;
+
+  const segs = [
+    { key: "answered", val: answered },
+    { key: "voicemail", val: voicemail },
+    { key: "abandoned", val: abandoned },
+  ].filter(s => s.val > 0);
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0" }}>
+      {/* key cap */}
+      <div style={{
+        width: 26, height: 26, flexShrink: 0, borderRadius: 6,
+        background: pressKey ? FLOW_COLORS.menu + "22" : t.chipBg,
+        border: `1px solid ${pressKey ? FLOW_COLORS.menu + "55" : t.divider}`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 700,
+        color: pressKey ? FLOW_COLORS.menu : t.textFaint,
+      }}>{pressKey || "–"}</div>
+
+      <div style={{ width: 14, flexShrink: 0, textAlign: "center", color: t.textFaint, fontSize: 11 }}>→</div>
+
+      <div style={{ width: 170, flexShrink: 0, minWidth: 0 }}>
+        <TargetChip kind={targetKind} label={target} theme={theme} />
+      </div>
+
+      {/* proportional outcome bar */}
+      <div style={{ flex: 1, minWidth: 80 }}>
+        <div style={{ height: 14, borderRadius: 4, background: t.chipBg, overflow: "hidden", width: `${widthPct}%`, display: "flex", transition: "width 0.4s ease" }}>
+          {segs.map(s => (
+            <div key={s.key} title={`${s.val} ${s.key}`} style={{ flex: s.val, background: FLOW_COLORS[s.key], transition: "flex 0.4s ease" }} />
+          ))}
+        </div>
+      </div>
+
+      <div style={{ width: 44, flexShrink: 0, textAlign: "right", fontFamily: "'DM Mono', monospace", fontSize: 14, fontWeight: 700, color: t.text }}>{calls}</div>
+
+      <div style={{ width: 118, flexShrink: 0, textAlign: "right", fontSize: 10, color: t.textMuted }}>
+        {answered === 0 && voicemail > 0 ? (
+          <><span style={{ color: FLOW_COLORS.voicemail, fontWeight: 700 }}>{voicemail}</span> to voicemail</>
+        ) : (
+          <>
+            <span style={{ color: FLOW_COLORS.answered, fontWeight: 700 }}>{answered}</span> answered
+            {voicemail > 0 && <> · <span style={{ color: FLOW_COLORS.voicemail, fontWeight: 700 }}>{voicemail}</span> vm</>}
+            {abandoned > 0 && (
+              <>
+                {" · "}
+                <span style={{ color: isBleeding ? FLOW_COLORS.abandoned : t.textMuted, fontWeight: isBleeding ? 700 : 400 }}>
+                  {lossRate}% lost
+                </span>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MenuBlock({ menu, theme }) {
+  const t = THEMES[theme];
+  const maxCalls = Math.max(...menu.options.map(o => o.calls), menu.droppedHere, 1);
+  const dropRate = menu.calls > 0 ? Math.round((menu.droppedHere / menu.calls) * 100) : 0;
+
+  return (
+    <div style={{
+      background: t.cardBg, border: `1px solid ${t.cardBorder}`,
+      borderRadius: 12, padding: "12px 14px",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 10, height: 10, borderRadius: 3, background: FLOW_COLORS.menu }} />
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: FLOW_COLORS.menu, textTransform: "uppercase" }}>{menu.label}</span>
+        </div>
+        <span style={{ fontSize: 10, color: t.textMuted }}>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: t.text }}>{menu.calls}</span> reached this menu
+        </span>
+      </div>
+
+      <div style={{ borderTop: `1px solid ${t.divider}` }}>
+        {menu.options.map(o => <FlowOption key={o.id} option={o} maxCalls={maxCalls} theme={theme} />)}
+
+        {menu.droppedHere > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: `1px dashed ${t.divider}` }}>
+            <div style={{
+              width: 26, height: 26, flexShrink: 0, borderRadius: 6, background: t.chipBg,
+              border: `1px dashed ${t.divider}`, display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 12, color: t.textFaint,
+            }}>✕</div>
+            <div style={{ width: 14, flexShrink: 0 }} />
+            <div style={{ width: 170, flexShrink: 0, fontSize: 12, fontWeight: 700, color: FLOW_COLORS.abandoned }}>Hung up at menu</div>
+            <div style={{ flex: 1, minWidth: 80 }}>
+              <div style={{ height: 14, borderRadius: 4, background: FLOW_COLORS.abandoned, width: `${Math.max(2, (menu.droppedHere / maxCalls) * 100)}%` }} />
+            </div>
+            <div style={{ width: 44, flexShrink: 0, textAlign: "right", fontFamily: "'DM Mono', monospace", fontSize: 14, fontWeight: 700, color: FLOW_COLORS.abandoned }}>{menu.droppedHere}</div>
+            <div style={{ width: 118, flexShrink: 0, textAlign: "right", fontSize: 10, color: t.textMuted }}>{dropRate}% never chose</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CallFlowTab({ callFlow, theme }) {
+  const t = THEMES[theme];
+  const cf = callFlow || {};
+  const menus = cf.menus || [];
+  const outcomes = cf.outcomes || {};
+  const analyzed = cf.analyzed || 0;
+  const answered = outcomes.answered || 0;
+  const abandoned = outcomes.abandoned || 0;
+  const answerRate = analyzed > 0 ? Math.round((answered / analyzed) * 100) : 0;
+
+  const updated = cf.updatedAt
+    ? new Date(cf.updatedAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
+    : null;
+
+  // Rank every option across every menu so the worst leak is obvious.
+  const leaks = menus
+    .flatMap(m => m.options.map(o => ({ ...o, menu: m.label })))
+    .filter(o => o.calls >= 5 && o.abandoned > 0)
+    .map(o => ({ ...o, lossRate: Math.round((o.abandoned / o.calls) * 100) }))
+    .sort((a, b) => b.lossRate - a.lossRate || b.abandoned - a.abandoned)
+    .slice(0, 5);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <KpiTile label="Calls Traced" value={analyzed} color="#038CF1" sub={updated ? `as of ${updated}` : "waiting for first poll"} size="large" theme={theme} />
+        <KpiTile label="Answer Rate" value={`${answerRate}%`} color={answerRate >= 85 ? "#22C55E" : answerRate >= 70 ? "#FFB800" : "#FF3B5C"} sub={`${answered} of ${analyzed}`} size="large" theme={theme} />
+        <KpiTile label="Abandoned" value={abandoned} color={FLOW_COLORS.abandoned} sub="hung up before an agent" size="large" theme={theme} />
+        <KpiTile label="Lost In Menu" value={cf.droppedInMenu || 0} color="#FFB800" sub="never reached a queue" size="large" theme={theme} />
+      </div>
+
+      {analyzed === 0 ? (
+        <div style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}`, borderRadius: 12, padding: "34px 20px", textAlign: "center" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 6 }}>No call paths traced yet</div>
+          <div style={{ fontSize: 11, color: t.textMuted, maxWidth: 460, margin: "0 auto", lineHeight: 1.6 }}>
+            Paths are read from Zoom after each call ends, so the board fills in as today's calls complete.
+            The first poll runs 30s after the server starts, then every 3 minutes.
+          </div>
+        </div>
+      ) : (
+        <>
+          {leaks.length > 0 && (
+            <div style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}`, borderRadius: 12, padding: "12px 14px" }}>
+              <SectionHeader color={FLOW_COLORS.abandoned} label="Where callers are dropping" theme={theme} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                {leaks.map(l => (
+                  <div key={l.menu + l.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11 }}>
+                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, fontWeight: 700, color: FLOW_COLORS.abandoned, width: 46, flexShrink: 0 }}>{l.lossRate}%</span>
+                    <span style={{ color: t.textMuted, flex: 1, minWidth: 0 }}>
+                      <span style={{ color: t.text, fontWeight: 700 }}>{l.menu}</span>
+                      {l.pressKey ? ` · press ${l.pressKey} → ` : " → "}
+                      <span style={{ color: t.text, fontWeight: 700 }}>{l.target}</span>
+                    </span>
+                    <span style={{ color: t.textMuted, flexShrink: 0 }}>
+                      <span style={{ color: FLOW_COLORS.abandoned, fontWeight: 700 }}>{l.abandoned}</span> of {l.calls} lost
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {menus.map(m => <MenuBlock key={m.label} menu={m} theme={theme} />)}
+        </>
+      )}
+
+      <div style={{ fontSize: 9, color: t.textFaint, textAlign: "center", lineHeight: 1.6 }}>
+        Zoom does not emit events while a caller is inside the phone tree — paths are read after each call ends,
+        so this trails live by a few minutes.
+        {cf.queued > 0 && ` ${cf.queued} calls still queued for tracing.`}
+      </div>
+    </div>
+  );
+}
+
 // ─── Performance Tab Components ──────────────────────────────────────────────
 
 function HourlyChart({ hourlyVolume, theme }) {
@@ -732,6 +948,7 @@ export default function App() {
   const stats = data?.stats || {};
   const hourlyVolume = data?.hourlyVolume || new Array(24).fill(0);
   const zoomQueues = data?.zoomQueues || { totalWaiting: 0, avgWaitTime: 0, queues: [] };
+  const callFlow = data?.callFlow || { menus: [], outcomes: {}, analyzed: 0 };
 
   const leadTeams = TEAM_LEADS[selectedLead] || TEAM_LEADS["All"];
   const manualAgents = useMemo(() =>
@@ -810,6 +1027,7 @@ export default function App() {
           {[
             { key: "live", label: "Live", color: "#FF8C00" },
             { key: "performance", label: "Performance", color: "#038CF1" },
+            { key: "callflow", label: "Call Flow", color: "#00BEA8" },
           ].map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
               padding: "6px 18px", borderRadius: 8, border: "none", cursor: "pointer",
@@ -850,6 +1068,8 @@ export default function App() {
         {/* ── Tab Content ─────────────────────────────────────── */}
         {activeTab === "live" ? (
           <LiveTab manualAgents={manualAgents} tick={tick} stats={stats} zoomQueues={zoomQueues} expanded={expanded} theme={theme} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />
+        ) : activeTab === "callflow" ? (
+          <CallFlowTab callFlow={callFlow} theme={theme} />
         ) : (
           <PerformanceTab manualAgents={manualAgents} stats={stats} hourlyVolume={hourlyVolume} theme={theme} zoomQueues={zoomQueues} sfPipeline={data?.sfPipeline || {}} />
         )}
