@@ -435,6 +435,60 @@ app.get('/api/debug-powerpack', async (req, res) => {
   } catch(e) { res.json({ error: e.message }); }
 });
 
+app.get('/api/debug-zcc', async (req, res) => {
+  if (req.query.refreshToken) { zoomAccessToken = null; zoomTokenExpiry = 0; }
+  const token = await getZoomToken();
+  if (!token) return res.status(500).json({ error: 'no zoom token' });
+  const auth = { headers: { Authorization: 'Bearer ' + token } };
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  const B = 'https://api.zoom.us/v2/contact_center';
+
+  // Zoom Contact Center is a separate product with its own API surface. The
+  // docs site is a JS shell, so probe the account directly and report what
+  // actually answers rather than guessing at paths.
+  const candidates = [
+    ['queues',            `${B}/queues?page_size=10`],
+    ['users',             `${B}/users?page_size=5`],
+    ['flows',             `${B}/flows?page_size=10`],
+    ['engagements',       `${B}/engagements?from=${today}&to=${today}&page_size=5`],
+    ['analytics/hist/eng',`${B}/analytics/dataset/historical/engagement?from=${today}&to=${today}&page_size=5`],
+    ['reports/queues',    `${B}/reports/queues?from=${today}&to=${today}`],
+    ['dispositions',      `${B}/dispositions?page_size=5`],
+    ['inboxes',           `${B}/inboxes?page_size=5`],
+    ['skills',            `${B}/skills?page_size=5`],
+    ['recordings',        `${B}/recordings?from=${today}&to=${today}&page_size=5`],
+  ];
+
+  const results = {};
+  for (const [name, url] of candidates) {
+    try {
+      const r = await fetch(url, auth);
+      const body = await r.text();
+      let j; try { j = JSON.parse(body); } catch { j = body; }
+      const listKey = j && typeof j === 'object'
+        ? Object.keys(j).find(k => Array.isArray(j[k])) : null;
+      const arr = listKey ? j[listKey] : null;
+      results[name] = {
+        status: r.status,
+        code: j && j.code,
+        message: j && j.message ? String(j.message).slice(0, 140) : undefined,
+        topKeys: j && typeof j === 'object' ? Object.keys(j).slice(0, 14) : null,
+        listKey,
+        count: arr ? arr.length : null,
+        // first item's field names reveal whether IVR/flow path is exposed
+        itemKeys: arr && arr[0] && typeof arr[0] === 'object' ? Object.keys(arr[0]) : null,
+        sample: arr && arr[0] ? arr[0] : undefined,
+      };
+    } catch (e) {
+      results[name] = { error: e.message };
+    }
+    await new Promise(r2 => setTimeout(r2, 80));
+  }
+
+  const working = Object.entries(results).filter(([, v]) => v.status === 200).map(([k]) => k);
+  res.json({ today, working, results });
+});
+
 app.get('/api/debug-callpath', async (req, res) => {
   if (req.query.refreshToken) { zoomAccessToken = null; zoomTokenExpiry = 0; }
   const token = await getZoomToken();
