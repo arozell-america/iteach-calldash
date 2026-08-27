@@ -1,5 +1,18 @@
-node_modules/
-dist/
-.env
-*.log
+# OS
 .DS_Store
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Local agent config
+.claude/
+
+# Node / build
+node_modules/
+build/
+dist/
+
+# Accidental junk folder from a mistyped mkdir — safe to delete
+{client/
