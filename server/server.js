@@ -503,6 +503,44 @@ app.get('/api/debug-callpath', async (req, res) => {
       await new Promise(r2 => setTimeout(r2, 60));
     }
 
+    // Entry analysis: how do the KEPT (iTeach) calls actually arrive? If the
+    // support line runs on Zoom Contact Center rather than Zoom Phone, the IVR
+    // steps live in ZCC and Zoom Phone only sees the leg after the handoff.
+    const entryAnalysis = { firstHopEvent: {}, firstHopType: {}, firstHopName: {}, zccTouched: 0, sampled: 0 };
+    for (const c of calls) {
+      if (!cfSiteAllowed(c.site_name)) continue;
+      if ((c.direction || '').toLowerCase() !== 'inbound') continue;
+      if (entryAnalysis.sampled >= 25) break;
+      const r = await fetch(`https://api.zoom.us/v2/phone/call_history/${encodeURIComponent(c.id)}`, auth);
+      if (!r.ok) continue;
+      const detail = await r.json();
+      const path = detail.call_path || [];
+      if (!path.length) continue;
+      entryAnalysis.sampled++;
+      const f = path[0];
+      const ev = f.event || '(none)';
+      entryAnalysis.firstHopEvent[ev] = (entryAnalysis.firstHopEvent[ev] || 0) + 1;
+      entryAnalysis.firstHopType[f.callee_ext_type || '(none)'] = (entryAnalysis.firstHopType[f.callee_ext_type || '(none)'] || 0) + 1;
+      entryAnalysis.firstHopName[f.callee_name || '(none)'] = (entryAnalysis.firstHopName[f.callee_name || '(none)'] || 0) + 1;
+      if (path.some(el => String(el.event || '').includes('contact_center'))) entryAnalysis.zccTouched++;
+      await new Promise(r2 => setTimeout(r2, 60));
+    }
+
+    // Is Zoom Contact Center even reachable with these credentials?
+    let zccProbe = null;
+    try {
+      const zr = await fetch('https://api.zoom.us/v2/contact_center/queues?page_size=5', auth);
+      const zb = await zr.text();
+      let zj; try { zj = JSON.parse(zb); } catch { zj = zb; }
+      zccProbe = {
+        status: zr.status,
+        code: zj && zj.code,
+        message: zj && zj.message,
+        queueCount: zj && zj.queues ? zj.queues.length : null,
+        queues: zj && zj.queues ? zj.queues.map(q => q.queue_name || q.name) : null,
+      };
+    } catch (e) { zccProbe = { error: e.message }; }
+
     const siteTally = {};
     for (const c of calls) {
       const k = `${c.site_name || '(none)'}${cfSiteAllowed(c.site_name) ? '  [KEPT]' : '  [excluded]'}`;
@@ -518,6 +556,8 @@ app.get('/api/debug-callpath', async (req, res) => {
     res.json({
       today,
       siteFilter: CALLFLOW_SITES,
+      entryAnalysis,
+      zccProbe,
       sites: siteTally,
       autoReceptionistsBySite: menusBySite,
       totalCallsToday: calls.length,
